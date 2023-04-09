@@ -31,6 +31,7 @@ class DataCachePlugin(var memDataWidth : Int,
                       var loadRspAt: Int = 2,
                       var storeReadBanksAt: Int = 0,
                       var storeReadTagsAt: Int = 1,
+                      var storeTranslatedAt: Int = 1,
                       var storeHitsAt: Int = 1,
                       var storeHitAt: Int = 1,
                       var storeControlAt: Int = 2,
@@ -72,6 +73,7 @@ class DataCachePlugin(var memDataWidth : Int,
   val storePorts = ArrayBuffer[StorePortSpec]()
   def newStorePort(): DataStorePort = {
     storePorts.addRet(StorePortSpec(DataStorePort(
+      preTranslationWidth  = VIRTUAL_EXT_WIDTH,
       postTranslationWidth = PHYSICAL_WIDTH,
       dataWidth     = cpuDataWidth,
       refillCount   = refillCount
@@ -105,34 +107,35 @@ class DataCachePlugin(var memDataWidth : Int,
 
 
     val cache = new DataCache(
-      cacheSize       = cacheSize,
-      wayCount        = wayCount,
-      memDataWidth    = memDataWidth,
-      cpuDataWidth    = cpuDataWidth,
-      refillCount     = refillCount,
-      writebackCount  = writebackCount,
-      preTranslationWidth    = VIRTUAL_EXT_WIDTH,
-      postTranslationWidth   = PHYSICAL_WIDTH,
-      lineSize         = lineSize,
+      cacheSize             = cacheSize,
+      wayCount              = wayCount,
+      memDataWidth          = memDataWidth,
+      cpuDataWidth          = cpuDataWidth,
+      refillCount           = refillCount,
+      writebackCount        = writebackCount,
+      preTranslationWidth   = VIRTUAL_EXT_WIDTH,
+      postTranslationWidth  = PHYSICAL_WIDTH,
+      lineSize              = lineSize,
       loadRefillCheckEarly  = loadRefillCheckEarly,
       storeRefillCheckEarly = storeRefillCheckEarly,
-      loadReadBanksAt  = loadReadBanksAt,
-      loadReadTagsAt   = loadReadTagsAt,
-      loadTranslatedAt = loadTranslatedAt,
-      loadHitsAt       = loadHitsAt,
-      loadHitAt        = loadHitAt,
-      loadBankMuxesAt  = loadBankMuxesAt,
-      loadBankMuxAt    = loadBankMuxAt,
-      loadControlAt    = loadControlAt,
-      loadRspAt        = loadRspAt,
-      storeReadBanksAt = storeReadBanksAt,
-      storeReadTagsAt  = storeReadTagsAt,
-      storeHitsAt      = storeHitsAt,
-      storeHitAt       = storeHitAt,
-      storeControlAt   = storeControlAt,
-      storeRspAt       = storeRspAt,
-      tagsReadAsync    = tagsReadAsync,
-      reducedBankWidth = reducedBankWidth
+      loadReadBanksAt       = loadReadBanksAt,
+      loadReadTagsAt        = loadReadTagsAt,
+      loadTranslatedAt      = loadTranslatedAt,
+      loadHitsAt            = loadHitsAt,
+      loadHitAt             = loadHitAt,
+      loadBankMuxesAt       = loadBankMuxesAt,
+      loadBankMuxAt         = loadBankMuxAt,
+      loadControlAt         = loadControlAt,
+      loadRspAt             = loadRspAt,
+      storeReadBanksAt      = storeReadBanksAt,
+      storeReadTagsAt       = storeReadTagsAt,
+      storeTranslatedAt     = storeTranslatedAt,
+      storeHitsAt           = storeHitsAt,
+      storeHitAt            = storeHitAt,
+      storeControlAt        = storeControlAt,
+      storeRspAt            = storeRspAt,
+      tagsReadAsync         = tagsReadAsync,
+      reducedBankWidth      = reducedBankWidth
     )
 
     setup.writebackBusy <> cache.io.writebackBusy
@@ -140,6 +143,7 @@ class DataCachePlugin(var memDataWidth : Int,
     setup.refillEvent.map(_ := RegNext(cache.io.refillEvent) init(False))
     setup.writebackEvent.map(_ := RegNext(cache.io.writebackEvent) init(False))
 
+      candidate_next_states(way) := candidate_next_states_bits
     setup.refillCompletions := cache.io.refillCompletions
 
     val load = new Area{
