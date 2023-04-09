@@ -84,6 +84,7 @@ case class DataStoreCmd(preTranslationWidth: Int,
 
 case class DataStoreTranslated(physicalWidth: Int) extends Bundle {
   val physical = UInt(physicalWidth bits)
+  val abord = Bool()
 }
 
 case class DataStoreRsp(addressWidth : Int, refillCount : Int) extends Bundle {
@@ -1103,6 +1104,7 @@ class DataCache(val cacheSize: Int,
     }
 
     translatedStage(ADDRESS_POST_TRANSLATION) := io.store.translated.physical
+    translatedStage(ABORD) := io.store.translated.abord
 
     val fetch = new Area {
       for ((way, wayId) <- ways.zipWithIndex) yield new Area {
@@ -1166,10 +1168,14 @@ class DataCache(val cacheSize: Int,
 
       REDO := MISS || waysHitHazard || bankBusy || refillHit || (wasClean && !reservation.win)
       MISS := !WAYS_HIT && !waysHitHazard && !refillHit
-
       val canRefill = !refill.full && !lineBusy && !load.ctrl.startRefill && reservation.win && !(refillWayNeedWriteback && writeback.full)
       val askRefill = MISS && canRefill && !refillHit
       val startRefill = isValid && GENERATION_OK && askRefill
+
+      when(ABORD){
+        REDO := False
+        MISS := False
+      }
 
       REFILL_SLOT_FULL := MISS && !refillHit && refill.full
       REFILL_SLOT := refill.free.andMask(askRefill)
