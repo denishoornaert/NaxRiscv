@@ -143,7 +143,6 @@ class DataCachePlugin(var memDataWidth : Int,
     setup.refillEvent.map(_ := RegNext(cache.io.refillEvent) init(False))
     setup.writebackEvent.map(_ := RegNext(cache.io.writebackEvent) init(False))
 
-      candidate_next_states(way) := candidate_next_states_bits
     setup.refillCompletions := cache.io.refillCompletions
 
     val load = new Area{
