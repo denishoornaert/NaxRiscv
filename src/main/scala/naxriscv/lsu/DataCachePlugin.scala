@@ -76,7 +76,8 @@ class DataCachePlugin(var memDataWidth : Int,
       preTranslationWidth  = VIRTUAL_EXT_WIDTH,
       postTranslationWidth = PHYSICAL_WIDTH,
       dataWidth     = cpuDataWidth,
-      refillCount   = refillCount
+      refillCount   = refillCount,
+      translatedAt  = storeTranslatedAt
     ))).port
   }
 

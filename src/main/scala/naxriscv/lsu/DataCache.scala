@@ -59,7 +59,8 @@ case class DataLoadRsp(dataWidth : Int, refillCount : Int) extends Bundle {
 case class DataStorePort(preTranslationWidth: Int,
                          postTranslationWidth: Int,
                          dataWidth: Int,
-                         refillCount : Int) extends Bundle with IMasterSlave {
+                         refillCount : Int,
+                         translatedAt: Int) extends Bundle with IMasterSlave {
   val cmd = Flow(DataStoreCmd(preTranslationWidth, dataWidth))
   val translated = DataStoreTranslated(postTranslationWidth)
   val rsp = Flow(DataStoreRsp(postTranslationWidth, refillCount))
