@@ -110,7 +110,7 @@ class PrefetchPredictor(lineSize          : Int,
 
       val pending = RegInit(False) setWhen(io.prediction.cmd.fire) clearWhen(io.prediction.rsp.fire)
 
-      io.prediction.cmd.valid := requestHit && !pending
+      io.prediction.cmd.valid := False //requestHit && !pending
       io.prediction.cmd.payload := base + offset + lineSize
       for(slot <- slots){
         slot.inflightSet setWhen(io.prediction.cmd.fire && requestOh(slot.id))
