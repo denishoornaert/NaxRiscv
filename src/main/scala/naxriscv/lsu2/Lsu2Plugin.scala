@@ -1387,12 +1387,14 @@ class Lsu2Plugin(var lqSize: Int,
         val fire = CombInit(doit)
 
         setup.cacheStore.cmd.valid := doit
-        setup.cacheStore.cmd.address := mem.addressPost.readAsync(ptr.writeBackReal)
+        setup.cacheStore.cmd.address := mem.addressPre.readAsync(ptr.writeBackReal)
         setup.cacheStore.cmd.mask :=  AddressToMask(setup.cacheStore.cmd.address, size, widthOf(setup.cacheStore.cmd.mask))
         setup.cacheStore.cmd.generation := generation
         setup.cacheStore.cmd.data.assignDontCare()
         setup.cacheStore.cmd.io := io
         setup.cacheStore.cmd.prefetch := False
+        setup.cacheStore.translated.physical := mem.addressPost.readAsync(ptr.writeBackReal)
+        setup.cacheStore.translated.abord := False
         switch(size){
           for(s <- 0 to log2Up(widthOf(setup.cacheStore.cmd.data)/8)) is(s){
             val w = (1 << s)*8
@@ -1406,8 +1408,6 @@ class Lsu2Plugin(var lqSize: Int,
           setup.cacheStore.cmd.io := False
           setup.cacheStore.cmd.prefetch := True
         }
-
-
 
         ptr.writeBack := ptr.writeBack + U(fire)
       }

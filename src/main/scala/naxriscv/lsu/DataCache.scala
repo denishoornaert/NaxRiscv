@@ -1093,6 +1093,8 @@ class DataCache(val cacheSize: Int,
 
       isValid := io.store.cmd.valid
       ADDRESS_PRE_TRANSLATION := io.store.cmd.address
+      val ADDRESS_POST_TRANSLATION := io.store.translated.physical
+      val ABORD := io.store.translated.abord
       CPU_WORD := io.store.cmd.data
       CPU_MASK := io.store.cmd.mask
       IO := io.store.cmd.io && !io.store.cmd.flush
@@ -1103,9 +1105,6 @@ class DataCache(val cacheSize: Int,
       GENERATION := io.store.cmd.generation
       WAYS_HAZARD := 0
     }
-
-    translatedStage(ADDRESS_POST_TRANSLATION) := io.store.translated.physical
-    translatedStage(ABORD) := io.store.translated.abord
 
     val fetch = new Area {
       for ((way, wayId) <- ways.zipWithIndex) yield new Area {
