@@ -1400,7 +1400,7 @@ class Lsu2Plugin(var lqSize: Int,
           }
         }
 
-        when(prediction.valid){
+        when(False){ //prediction.valid){
           setup.cacheStore.cmd.valid := True
           setup.cacheStore.cmd.address := prediction.payload
           setup.cacheStore.cmd.io := False
