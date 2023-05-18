@@ -33,9 +33,9 @@ class LRULogic(ways: Int, state_width: Int) extends Area {
     }
     return indices(index)
   }
-
-  // Updates the order encoding based on the way touched
-  def update_order_encoding(state: UInt, touch_way: UInt) : UInt = {
+ 
+  // Upgrades the order encoding based on the way touched
+  def upgrade_order_encoding(state: UInt, touch_way: UInt) : UInt = {
     // Generate candidate states
     val candidate_next_states = Array.tabulate(ways)(n => Bits(state_width bits))
     for (way <- 0 until ways) {
@@ -48,6 +48,24 @@ class LRULogic(ways: Int, state_width: Int) extends Area {
         candidate_next_states(way)(index) := True
       for (index <- zero_mask_indices(way))
         candidate_next_states(way)(index) := False
+    }
+    return touch_way.muxList(for (n <- 0 until ways) yield (n, candidate_next_states(n).asUInt))
+  }
+
+  // Downgrades the order encoding based on the way touched
+  def downgrade_order_encoding(state: UInt, touch_way: UInt) : UInt = {
+    // Generate candidate states
+    val candidate_next_states = Array.tabulate(ways)(n => Bits(state_width bits))
+    for (way <- 0 until ways) {
+      var unchanged_indices = ArrayBuffer.tabulate(state_width)(n => n)
+      unchanged_indices --= one_mask_indices(way)
+      unchanged_indices --= zero_mask_indices(way)
+      for (index <- unchanged_indices)
+        candidate_next_states(way)(index) := state(index)
+      for (index <- one_mask_indices(way))
+        candidate_next_states(way)(index) := False
+      for (index <- zero_mask_indices(way))
+        candidate_next_states(way)(index) := True
     }
     return touch_way.muxList(for (n <- 0 until ways) yield (n, candidate_next_states(n).asUInt))
   }
@@ -77,11 +95,16 @@ class LRULogic(ways: Int, state_width: Int) extends Area {
 }
 
 
-case class AltLRU(ways: Int, state_width: Int) extends LRULogic(ways, state_width) {
+case class LRU(ways: Int, state_width: Int) extends LRULogic(ways, state_width) {
 
-  // Returns the next updates state upon touching a way
+  // Returns the next updated state upon touching a way
   def get_next_state(hit: Bool, state: UInt, touch_way: UInt) : UInt = {
-    return update_order_encoding(state, touch_way) 
+    return upgrade_order_encoding(state, touch_way) 
+  }
+
+  // Returns the next updated state with indicated way being invalidated
+  def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+    return downgrade_order_encoding(state, touch_way)
   }
 
   // Returns the encoding of state for reset mode
@@ -103,11 +126,16 @@ case class AltLRU(ways: Int, state_width: Int) extends LRULogic(ways, state_widt
 }
 
 
-case class AltFIFO(ways: Int, state_width: Int) extends LRULogic(ways, state_width) {
+case class FIFO(ways: Int, state_width: Int) extends LRULogic(ways, state_width) {
 
   // Returns the next updates state upon touching a way
   def get_next_state(hit: Bool, state: UInt, touch_way: UInt) : UInt = {
     return Mux(hit, state, update_order_encoding(state, touch_way))
+  }
+
+  // Returns the next updated state with indicated way being invalidated
+  def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+    return downgrade_order_encoding(state, touch_way)
   }
 
   // Returns the encoding of state for reset mode
