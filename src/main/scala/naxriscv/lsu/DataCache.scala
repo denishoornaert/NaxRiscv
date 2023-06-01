@@ -553,33 +553,8 @@ class DataCache(val cacheSize: Int,
     }
   }
 
-  val metaWrite = new Area{
-    val valid = Bool()
-    val address = UInt(log2Up(linePerWay) bits)
-    val meta = Meta()
-
-    valid := False
-    address.assignDontCare()
-    meta.assignDontCare()
-  }
-
-  val meta = new Area{
-    val mem = Mem.fill(linePerWay)(Meta())
-    mem.write(metaWrite.address, metaWrite.meta, metaWrite.valid)
-    val loadRead = new Area{
-      val cmd = Flow(mem.addressType)
-      val rsp = if(tagsReadAsync) mem.readAsync(cmd.payload) else mem.readSync(cmd.payload, cmd.valid)
-      KeepAttribute(rsp)
-    }
-    val storeRead = new Area{
-      val cmd = Flow(mem.addressType)
-      val rsp = if(tagsReadAsync) mem.readAsync(cmd.payload) else mem.readSync(cmd.payload, cmd.valid)
-      KeepAttribute(rsp)
-    }
-  }
-
   //val wayRandom = CounterFreeRun(wayCount)
-  val policy = new LRU(wayCount, metaWidth)
+  val policy = new RandomLFSR(wayCount, metaWidth)
 
   val invalidate = new Area{
     val counter = Reg(UInt(log2Up(linePerWay)+1 bits)) init(0)
@@ -592,9 +567,7 @@ class DataCache(val cacheSize: Int,
       waysWrite.address := counter.resized
       waysWrite.tag.loaded := False
       when(counter === 0){
-        metaWrite.valid := True
-        metaWrite.address := counter.resized
-        metaWrite.meta.state := policy.get_reset_state()
+        policy.on_reset(counter.resized)
       }
     }
   }
@@ -1022,7 +995,7 @@ class DataCache(val cacheSize: Int,
       import controlStage._
 
       val reservation = tagsOrStatusWriteArbitration.create(2)
-      val refillWay = policy.get_replace_way(SET_META.state) //CombInit(wayRandom.value)
+      val refillWay = policy.victim() //CombInit(wayRandom.value)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = REFILL_HITS.orR
       val refillLoaded = (B(refill.slots.map(_.loaded)) & REFILL_HITS).orR
@@ -1067,13 +1040,14 @@ class DataCache(val cacheSize: Int,
         writeback.push.address := (WAYS_TAGS(refillWay).address @@ ADDRESS_PRE_TRANSLATION(lineRange)) << lineRange.low
         writeback.push.way := refillWay
       }
-     
-      // write at set's state an updated version of the state where the way indicated by 'WAYS_HITS' is touched
-      metaWrite.valid := !startRefill
-      metaWrite.address := ADDRESS_PRE_TRANSLATION(lineRange)
-      val target = policy.get_touch_way(!startRefill, OHToUInt(WAYS_HITS), refillWay)
-      metaWrite.meta.state := policy.get_next_state(!startRefill, SET_META.state, target)
-      
+
+      when (startRefill) {
+        policy.on_miss(ADDRESS_PRE_TRANSLATION(lineRange))
+      }
+      .elsewhen (isValid & WAYS_HIT) {
+        policy.on_hit(ADDRESS_PRE_TRANSLATION(lineRange), OHToUInt(WAYS_HITS))
+      }
+
       REFILL_SLOT_FULL := MISS && !refillHit && refill.full
       REFILL_SLOT := REFILL_HITS.andMask(!refillLoaded) | refill.free.andMask(askRefill)
     }
@@ -1196,7 +1170,7 @@ class DataCache(val cacheSize: Int,
       GENERATION_OK := GENERATION === target || PREFETCH
 
       val reservation = tagsOrStatusWriteArbitration.create(3)
-      val refillWay = policy.get_replace_way(SET_META.state) //CombInit(wayRandom.value)
+      val refillWay = policy.victim() //CombInit(wayRandom.value)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = (REFILL_HITS & B(refill.slots.map(!_.loaded))).orR
       val lineBusy = isLineBusy(ADDRESS_POST_TRANSLATION, refillWay)
@@ -1270,18 +1244,16 @@ class DataCache(val cacheSize: Int,
         whenIndexed(status.write.data, refillWay)(_.dirty := False)
       }
 
-      when (!startFlush) {
-        // write at set's state an updated version of the state where the way indicated by 'WAYS_HITS' is touched
-        val is_hit = (!startRefill)|writeCache
-        val target = policy.get_touch_way(is_hit, OHToUInt(WAYS_HITS), refillWay)
-        metaWrite.valid := is_hit
-        metaWrite.address := ADDRESS_POST_TRANSLATION(lineRange)
-        metaWrite.meta.state := policy.get_next_state(is_hit, SET_META.state, target)
-      } // TODO: handle invalidation
-      .otherwise {
-        metaWrite := True
-        metaWrite.address := ADDRESS_POST_TRANSLATION(lineRange)
-        metaWrite.meta.state := policy.get_invalidate_state(SET_META.state, needFlushSel)
+      when (startFlush) {
+        policy.on_invalidate(ADDRESS_POST_TRANSLATION(lineRange), needFlushSel)
+      }
+      .elsewhen (isValid) { // TODO: WAYS_HIT instead of !startRefill?
+        when ((!startRefill) | writeCache) {
+          policy.on_hit(ADDRESS_POST_TRANSLATION(lineRange), OHToUInt(WAYS_HITS))
+        }
+        .otherwise {
+          policy.on_miss(ADDRESS_POST_TRANSLATION(lineRange))
+        }
       }
 
       when(writeCache){
