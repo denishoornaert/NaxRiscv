@@ -8,7 +8,103 @@ import spinal.core._
 import spinal.lib._
 
 
-class LRULogic(ways: Int, state_width: Int) extends Area {
+abstract class EvictionPolicy(way: Int, state_width: Int) extends Area {
+
+  def get_next_state_hit(state: UInt, touch_way: UInt) : UInt
+
+  def get_next_state_miss(state: UInt, touch_way: UInt) : UInt
+
+  def get_invalidate_state(state: UInt, touch_way: UInt) : UInt
+
+  def get_reset_state() : UInt
+
+  def get_replace_way(state: UInt) : UInt
+
+}
+
+
+case class RandomFreeCounter(ways: Int, state_width: Int) extends EvictionPolicy(ways, state_width) {
+
+  val counter = CounterFreeRun(log2Up(ways))
+
+  override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
+    return U(0, state_width bits) 
+  }
+
+  override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
+    return U(0, state_width bits)
+  }
+
+  override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+    return U(0, state_width bits)
+  }
+
+  override def get_reset_state() : UInt = {
+    return U(0, state_width bits)
+  }
+
+  override def get_replace_way(state: UInt) : UInt = {
+    return counter.value
+  }
+
+}
+
+
+case class RandomLFSR(ways: Int, state_width: Int) extends EvictionPolicy(ways, state_width) {
+
+  // From "Table of Linear Feedback Shift Register" by Roy Ward and Tim Molteno
+  // LFSR-4 is always chosen unless only LFSR-2 is available
+  val taps = Map(
+     2 -> Seq(         2,  1),
+     3 -> Seq(         3,  2),
+     4 -> Seq(         4,  3),
+     5 -> Seq( 5,  4,  3,  2),
+     6 -> Seq( 6,  5,  3,  2),
+     7 -> Seq( 7,  6,  5,  4),
+     8 -> Seq( 8,  6,  5,  4),
+     9 -> Seq( 9,  8,  6,  5),
+    10 -> Seq(10,  9,  7,  6),
+    11 -> Seq(11, 10,  9,  7),
+    12 -> Seq(12, 11,  8,  6),
+    13 -> Seq(13, 12, 10,  9),
+    14 -> Seq(14, 13, 11,  9),
+    15 -> Seq(15, 14, 13, 11),
+    16 -> Seq(16, 14, 13, 11)
+  )
+
+  val counter = Reg(UInt(ways bits)) init(1)
+
+  override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
+    return U(0, state_width bits)
+  }
+
+  override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
+    return U(0, state_width bits)
+  }
+
+  override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+    return U(0, state_width bits)
+  }
+
+  override def get_reset_state() : UInt = {
+    return U(0, state_width bits)
+  }
+
+  override def get_replace_way(state: UInt) : UInt = {
+    for (i <- 0 until ways-1) {
+      if (taps(ways).contains(i+1))
+        counter(i) := counter(i+1) ^ counter(0)
+      else
+        counter(i) := counter(i+1)
+    }
+    counter(ways-1) := counter(0)
+    return counter(log2Up(ways)-1 downto 0)
+  }
+
+}
+
+
+abstract class LRULogic(ways: Int, state_width: Int) extends EvictionPolicy(ways, state_width) {
  
   def zero_mask_indices(index: Int) : Array[Int] = {
     var i = state_width-1
@@ -98,60 +194,56 @@ class LRULogic(ways: Int, state_width: Int) extends Area {
 case class LRU(ways: Int, state_width: Int) extends LRULogic(ways, state_width) {
 
   // Returns the next updated state upon touching a way
-  def get_next_state(hit: Bool, state: UInt, touch_way: UInt) : UInt = {
+  override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
     return upgrade_order_encoding(state, touch_way) 
   }
 
+  override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
+    return upgrade_order_encoding(state, touch_way)
+  }
+
   // Returns the next updated state with indicated way being invalidated
-  def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+  override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
     return downgrade_order_encoding(state, touch_way)
   }
 
   // Returns the encoding of state for reset mode
-  def get_reset_state() : UInt = {
+  override def get_reset_state() : UInt = {
     return U(0, state_width bits)
   }
 
   // Compare state with mask for each state to determine the LRU way
-  def get_replace_way(state: UInt) : UInt = {
+  override def get_replace_way(state: UInt) : UInt = {
     return get_least_recently_used(state)
   }
 
-  // Returns the way to touch when a hit or miss takes place
-  // In LRU, regardless of hit or miss, insertion takes place at the way touched
-  def get_touch_way(hit: Bool, touch_way: UInt, victim: UInt) : UInt = {
-    return touch_way
-  }
-  
 }
 
 
 case class FIFO(ways: Int, state_width: Int) extends LRULogic(ways, state_width) {
 
   // Returns the next updates state upon touching a way
-  def get_next_state(hit: Bool, state: UInt, touch_way: UInt) : UInt = {
-    return Mux(hit, state, update_order_encoding(state, touch_way))
+  override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
+    return state
+  }
+
+  override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
+    return upgrade_order_encoding(state, touch_way)
   }
 
   // Returns the next updated state with indicated way being invalidated
-  def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+  override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
     return downgrade_order_encoding(state, touch_way)
   }
 
   // Returns the encoding of state for reset mode
-  def get_reset_state() : UInt = {
+  override def get_reset_state() : UInt = {
     return U(0, state_width bits)
   }
 
   // Compare state with mask for each state to determine the LRU way
-  def get_replace_way(state: UInt) : UInt = {
+  override def get_replace_way(state: UInt) : UInt = {
     return get_least_recently_used(state)
-  }
-
-  // Returns the way to touch when a hit or miss takes place
-  // In FIFO, insertion takes place at the victim slot! Upon hits, nothing changes.
-  def get_touch_way(hit: Bool, touch_way: UInt, victim: UInt) : UInt = {
-    return Mux(hit, touch_way, victim)
   }
 
 }
