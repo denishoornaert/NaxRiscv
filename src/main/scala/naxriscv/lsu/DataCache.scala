@@ -412,7 +412,6 @@ class DataCache(val cacheSize: Int,
   val memData = HardType(Bits(memDataWidth bits))
   val memWordPerLine = lineSize/bytePerMemWord
   val tagWidth = postTranslationWidth-log2Up(waySize)
-  val metaWidth = ((wayCount*wayCount)-wayCount)/2
 
   val tagRange = postTranslationWidth-1 downto log2Up(linePerWay*lineSize)
   val lineRange = tagRange.low-1 downto log2Up(lineSize)
@@ -454,14 +453,12 @@ class DataCache(val cacheSize: Int,
   case class Status() extends Bundle{
     val dirty = Bool()
   }
-
-  case class Meta() extends Bundle{
-    val state = UInt(metaWidth bits)
-  }
+ 
+  val policy = new RandomLFSR(wayCount, linePerWay, tagsReadAsync)
 
   val STATUS = Stageable(Vec.fill(wayCount)(Status()))
   val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
-  val SET_META = Stageable(Meta())
+  val SET_META = Stageable(UInt(policy.stateWidth bits))
   val WAYS_TAGS = Stageable(Vec.fill(wayCount)(Tag()))
   val WAYS_HITS = Stageable(Bits(wayCount bits))
   val WAYS_HIT = Stageable(Bool())
@@ -553,34 +550,6 @@ class DataCache(val cacheSize: Int,
     }
   }
 
-  val metaWrite = new Area{
-    val valid = Bool()
-    val address = UInt(log2Up(linePerWay) bits)
-    val meta = Meta()
-
-    valid := False
-    address.assignDontCare()
-    meta.assignDontCare()
-  }
-
-  val meta = new Area{
-    val mem = Mem.fill(linePerWay)(Meta())
-    mem.write(metaWrite.address, metaWrite.meta, metaWrite.valid)
-    val loadRead = new Area{
-      val cmd = Flow(mem.addressType)
-      val rsp = if(tagsReadAsync) mem.readAsync(cmd.payload) else mem.readSync(cmd.payload, cmd.valid)
-      KeepAttribute(rsp)
-    }
-    val storeRead = new Area{
-      val cmd = Flow(mem.addressType)
-      val rsp = if(tagsReadAsync) mem.readAsync(cmd.payload) else mem.readSync(cmd.payload, cmd.valid)
-      KeepAttribute(rsp)
-    }
-  }
-
-  //val wayRandom = CounterFreeRun(wayCount)
-  val policy = new FIFO(wayCount, metaWidth)
-
   val invalidate = new Area{
     val counter = Reg(UInt(log2Up(linePerWay)+1 bits)) init(0)
     val done = counter.msb
@@ -592,9 +561,9 @@ class DataCache(val cacheSize: Int,
       waysWrite.address := counter.resized
       waysWrite.tag.loaded := False
       when(counter === 0){
-        metaWrite.valid := True
-        metaWrite.address := counter.resized
-        metaWrite.meta.state := policy.get_reset_state()
+        policy.write.valid := True
+        policy.write.address := counter.resized
+        policy.write.state := policy.get_reset_state()
       }
     }
   }
@@ -985,9 +954,9 @@ class DataCache(val cacheSize: Int,
         WAYS_HIT := B(WAYS_HITS).orR
       }
 
-      meta.loadRead.cmd.valid := !readTagsStage.isStuck
-      meta.loadRead.cmd.payload := readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange)
-      pipeline.stages(loadReadTagsAt + (!tagsReadAsync).toInt)(SET_META) := meta.loadRead.rsp;
+      policy.read.load.cmd.valid := !readTagsStage.isStuck
+      policy.read.load.cmd.payload := readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange)
+      pipeline.stages(loadReadTagsAt + (!tagsReadAsync).toInt)(SET_META) := policy.read.load.rsp;
 
       status.loadRead.cmd.valid := !readTagsStage.isStuck
       status.loadRead.cmd.payload := readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange)
@@ -1022,7 +991,7 @@ class DataCache(val cacheSize: Int,
       import controlStage._
 
       val reservation = tagsOrStatusWriteArbitration.create(2)
-      val refillWay = policy.get_replace_way(SET_META.state) //CombInit(wayRandom.value)
+      val refillWay = policy.get_replace_way(SET_META) //CombInit(wayRandom.value)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = REFILL_HITS.orR
       val refillLoaded = (B(refill.slots.map(_.loaded)) & REFILL_HITS).orR
@@ -1069,20 +1038,15 @@ class DataCache(val cacheSize: Int,
       }
 
       when (startRefill) { // Miss
-        metaWrite.valid := True
-        metaWrite.address := ADDRESS_PRE_TRANSLATION(lineRange)
-        metaWrite.meta.state := policy.get_next_state_miss(SET_META.state, refillWay)
+        policy.write.valid := True
+        policy.write.address := ADDRESS_PRE_TRANSLATION(lineRange)
+        policy.write.state := policy.get_next_state_miss(SET_META, refillWay)
       }
       .elsewhen (isValid & WAYS_HIT) { // Hit
-        metaWrite.valid := True
-        metaWrite.address := ADDRESS_PRE_TRANSLATION(lineRange)
-        metaWrite.meta.state := policy.get_next_state_hit(SET_META.state, OHToUInt(WAYS_HITS))
+        policy.write.valid := True
+        policy.write.address := ADDRESS_PRE_TRANSLATION(lineRange)
+        policy.write.state := policy.get_next_state_hit(SET_META, OHToUInt(WAYS_HITS))
       }
-      // write at set's state an updated version of the state where the way indicated by 'WAYS_HITS' is touched
-      //metaWrite.valid := !startRefill
-      //metaWrite.address := ADDRESS_PRE_TRANSLATION(lineRange)
-      //val target = policy.get_touch_way(!startRefill, OHToUInt(WAYS_HITS), refillWay)
-      //metaWrite.meta.state := policy.get_next_state(!startRefill, SET_META.state, target)
       
       REFILL_SLOT_FULL := MISS && !refillHit && refill.full
       REFILL_SLOT := REFILL_HITS.andMask(!refillLoaded) | refill.free.andMask(askRefill)
@@ -1169,9 +1133,9 @@ class DataCache(val cacheSize: Int,
         WAYS_HIT := B(WAYS_HITS).orR
       }
 
-      meta.storeRead.cmd.valid := !readTagsStage.isStuck
-      meta.storeRead.cmd.payload := readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
-      pipeline.stages(loadReadTagsAt + (!tagsReadAsync).toInt)(SET_META) := meta.storeRead.rsp
+      policy.read.store.cmd.valid := !readTagsStage.isStuck
+      policy.read.store.cmd.payload := readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
+      pipeline.stages(loadReadTagsAt + (!tagsReadAsync).toInt)(SET_META) := policy.read.store.rsp
 
       status.storeRead.cmd.valid := !readTagsStage.isStuck
       status.storeRead.cmd.payload := readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
@@ -1206,7 +1170,7 @@ class DataCache(val cacheSize: Int,
       GENERATION_OK := GENERATION === target || PREFETCH
 
       val reservation = tagsOrStatusWriteArbitration.create(3)
-      val refillWay = policy.get_replace_way(SET_META.state) //CombInit(wayRandom.value)
+      val refillWay = policy.get_replace_way(SET_META) //CombInit(wayRandom.value)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = (REFILL_HITS & B(refill.slots.map(!_.loaded))).orR
       val lineBusy = isLineBusy(ADDRESS_POST_TRANSLATION, refillWay)
@@ -1280,34 +1244,20 @@ class DataCache(val cacheSize: Int,
         whenIndexed(status.write.data, refillWay)(_.dirty := False)
       }
 
-//      when (!startFlush) {
-//      // write at set's state an updated version of the state where the way indicated by 'WAYS_HITS' is touched
-//        val is_hit = (!startRefill)|writeCache
-//        val target = policy.get_touch_way(is_hit, OHToUInt(WAYS_HITS), refillWay)
-//        metaWrite.valid := is_hit
-//        metaWrite.address := ADDRESS_POST_TRANSLATION(lineRange)
-//        metaWrite.meta.state := policy.get_next_state(is_hit, SET_META.state, target)
-//      } // TODO: handle invalidation
-//      .otherwise {
-//        metaWrite := True
-//        metaWrite.address := ADDRESS_POST_TRANSLATION(lineRange)
-//        metaWrite.meta.state := policy.get_invalidate_state(SET_META.state, needFlushSel)
-//      }
-
       when (startFlush) { // Invalidate
-        metaWrite.valid := True
-        metaWrite.address := ADDRESS_POST_TRANSLATION(lineRange)
-        metaWrite.meta.state := policy.get_invalidate_state(SET_META.state, needFlushSel)
+        policy.write.valid := True
+        policy.write.address := ADDRESS_POST_TRANSLATION(lineRange)
+        policy.write.state := policy.get_invalidate_state(SET_META, needFlushSel)
       }
       .elsewhen (writeCache) { // Hit
-        metaWrite.valid := True
-        metaWrite.address := ADDRESS_POST_TRANSLATION(lineRange)
-        metaWrite.meta.state := policy.get_next_state_hit(SET_META.state, OHToUInt(WAYS_HITS))
+        policy.write.valid := True
+        policy.write.address := ADDRESS_POST_TRANSLATION(lineRange)
+        policy.write.state := policy.get_next_state_hit(SET_META, OHToUInt(WAYS_HITS))
       }
       .elsewhen (startRefill) { // Miss
-        metaWrite.valid := True
-        metaWrite.address := ADDRESS_POST_TRANSLATION(lineRange)
-        metaWrite.meta.state := policy.get_next_state_miss(SET_META.state, refillWay)
+        policy.write.valid := True
+        policy.write.address := ADDRESS_POST_TRANSLATION(lineRange)
+        policy.write.state := policy.get_next_state_miss(SET_META, refillWay)
       }
 
       when(writeCache){

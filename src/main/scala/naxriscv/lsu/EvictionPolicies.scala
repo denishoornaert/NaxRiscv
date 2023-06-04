@@ -8,7 +8,11 @@ import spinal.core._
 import spinal.lib._
 
 
-abstract class EvictionPolicy(way: Int, state_width: Int) extends Area {
+abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean) extends Area {
+
+  val write = new Area{}
+
+  val read = new Area{}
 
   def get_next_state_hit(state: UInt, touch_way: UInt) : UInt
 
@@ -23,34 +27,61 @@ abstract class EvictionPolicy(way: Int, state_width: Int) extends Area {
 }
 
 
-case class RandomFreeCounter(ways: Int, state_width: Int) extends EvictionPolicy(ways, state_width) {
+case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends EvictionPolicy(ways, linePerWay, tagsReadAsync) {
+
+  val stateWidth = 0
 
   val counter = CounterFreeRun(log2Up(ways))
 
   override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
-    return U(0, state_width bits) 
+    return U(0, stateWidth bits) 
   }
 
   override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
-    return U(0, state_width bits)
+    return U(0, stateWidth bits)
   }
 
   override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
-    return U(0, state_width bits)
+    return U(0, stateWidth bits)
   }
 
   override def get_reset_state() : UInt = {
-    return U(0, state_width bits)
+    return U(0, stateWidth bits)
   }
 
   override def get_replace_way(state: UInt) : UInt = {
     return counter.value
   }
 
+  override val write = new Area{
+    val valid = Bool()
+    val address = UInt(log2Up(linePerWay) bits)
+    val state = UInt(stateWidth bits)
+
+    valid := False
+    address.assignDontCare()
+    state.assignDontCare()
+  }
+
+  override val read = new Area{
+    val load = new Area{
+      val cmd = Flow(UInt(log2Up(linePerWay) bits))
+      val rsp = U(0, stateWidth bits)
+      KeepAttribute(rsp)
+    }
+    val store = new Area{
+      val cmd = Flow(UInt(log2Up(linePerWay) bits))
+      val rsp = U(0, stateWidth bits)
+      KeepAttribute(rsp)
+    }
+  }
+
 }
 
 
-case class RandomLFSR(ways: Int, state_width: Int) extends EvictionPolicy(ways, state_width) {
+case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends EvictionPolicy(ways, linePerWay, tagsReadAsync) {
+
+  val stateWidth = 6
 
   // From "Table of Linear Feedback Shift Register" by Roy Ward and Tim Molteno
   // LFSR-4 is always chosen unless only LFSR-2 is available
@@ -72,42 +103,72 @@ case class RandomLFSR(ways: Int, state_width: Int) extends EvictionPolicy(ways, 
     16 -> Seq(16, 14, 13, 11)
   )
 
-  val counter = Reg(UInt(ways bits)) init(1)
+  val counter = Reg(UInt(stateWidth bits)) init(1)
 
   override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
-    return U(0, state_width bits)
+    return state
   }
 
   override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
-    return U(0, state_width bits)
+    val newState = UInt(stateWidth bits)
+    for (i <- 0 until stateWidth-1) {
+      if (taps(stateWidth).contains(i+1))
+        newState(i) := state(i+1) ^ state(0)
+      else
+        newState(i) := state(i+1)
+    }
+    newState(stateWidth-1) := state(0)
+    return newState
   }
 
   override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
-    return U(0, state_width bits)
+    return state
   }
 
   override def get_reset_state() : UInt = {
-    return U(0, state_width bits)
+    return U(1, stateWidth bits)
   }
 
   override def get_replace_way(state: UInt) : UInt = {
-    for (i <- 0 until ways-1) {
-      if (taps(ways).contains(i+1))
-        counter(i) := counter(i+1) ^ counter(0)
-      else
-        counter(i) := counter(i+1)
+    return state(log2Up(ways)-1 downto 0)
+  }
+
+  override val write = new Area{
+    val valid = Bool()
+    val address = UInt(log2Up(linePerWay) bits)
+    val state = UInt(stateWidth bits)
+
+    valid := False
+    address.assignDontCare()
+    state.assignDontCare()
+
+    when (valid) {
+      counter := state
     }
-    counter(ways-1) := counter(0)
-    return counter(log2Up(ways)-1 downto 0)
+  }
+
+  override val read = new Area{
+    val load = new Area{
+      val cmd = Flow(UInt(log2Up(linePerWay) bits))
+      val rsp = counter
+      KeepAttribute(rsp)
+    }
+    val store = new Area{
+      val cmd = Flow(UInt(log2Up(linePerWay) bits))
+      val rsp = counter
+      KeepAttribute(rsp)
+    }
   }
 
 }
 
 
-abstract class LRULogic(ways: Int, state_width: Int) extends EvictionPolicy(ways, state_width) {
- 
+abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends EvictionPolicy(ways, linePerWay, tagsReadAsync) {
+
+  val stateWidth = ((ways*ways)-ways)/2
+
   def zero_mask_indices(index: Int) : Array[Int] = {
-    var i = state_width-1
+    var i = stateWidth-1
     val indices = Array.tabulate(ways)(n => Array.tabulate(n)(i => 0))
     for (row <- ways-1 to 0 by -1) {
       for (col <- 0 until indices(row).size) {
@@ -119,7 +180,7 @@ abstract class LRULogic(ways: Int, state_width: Int) extends EvictionPolicy(ways
   }
   
   def one_mask_indices(index: Int) : Array[Int] = {
-    var i = state_width-1
+    var i = stateWidth-1
     val indices = Array.tabulate(ways)(n => Array.tabulate(ways-n-1)(i => 0))
     for (col <- 0 until ways-1) {
       for (row <- ways-2-col to 0 by -1) {
@@ -133,9 +194,9 @@ abstract class LRULogic(ways: Int, state_width: Int) extends EvictionPolicy(ways
   // Upgrades the order encoding based on the way touched
   def upgrade_order_encoding(state: UInt, touch_way: UInt) : UInt = {
     // Generate candidate states
-    val candidate_next_states = Array.tabulate(ways)(n => Bits(state_width bits))
+    val candidate_next_states = Array.tabulate(ways)(n => Bits(stateWidth bits))
     for (way <- 0 until ways) {
-      var unchanged_indices = ArrayBuffer.tabulate(state_width)(n => n)
+      var unchanged_indices = ArrayBuffer.tabulate(stateWidth)(n => n)
       unchanged_indices --= one_mask_indices(way)
       unchanged_indices --= zero_mask_indices(way)
       for (index <- unchanged_indices)
@@ -151,9 +212,9 @@ abstract class LRULogic(ways: Int, state_width: Int) extends EvictionPolicy(ways
   // Downgrades the order encoding based on the way touched
   def downgrade_order_encoding(state: UInt, touch_way: UInt) : UInt = {
     // Generate candidate states
-    val candidate_next_states = Array.tabulate(ways)(n => Bits(state_width bits))
+    val candidate_next_states = Array.tabulate(ways)(n => Bits(stateWidth bits))
     for (way <- 0 until ways) {
-      var unchanged_indices = ArrayBuffer.tabulate(state_width)(n => n)
+      var unchanged_indices = ArrayBuffer.tabulate(stateWidth)(n => n)
       unchanged_indices --= one_mask_indices(way)
       unchanged_indices --= zero_mask_indices(way)
       for (index <- unchanged_indices)
@@ -188,10 +249,35 @@ abstract class LRULogic(ways: Int, state_width: Int) extends EvictionPolicy(ways
     return OHToUInt(least_recently_used)
   }
 
+  override val write = new Area{
+    val valid = Bool()
+    val address = UInt(log2Up(linePerWay) bits)
+    val state = UInt(stateWidth bits)
+
+    valid := False
+    address.assignDontCare()
+    state.assignDontCare()
+  }
+
+  override val read = new Area{
+    val mem = Mem.fill(linePerWay)(UInt(stateWidth bits))
+    mem.write(write.address, write.state, write.valid)
+    val load = new Area{
+      val cmd = Flow(mem.addressType)
+      val rsp = if(tagsReadAsync) mem.readAsync(cmd.payload) else mem.readSync(cmd.payload, cmd.valid)
+      KeepAttribute(rsp)
+    }
+    val store = new Area{
+      val cmd = Flow(mem.addressType)
+      val rsp = if(tagsReadAsync) mem.readAsync(cmd.payload) else mem.readSync(cmd.payload, cmd.valid)
+      KeepAttribute(rsp)
+    }
+  }
+
 }
 
 
-case class LRU(ways: Int, state_width: Int) extends LRULogic(ways, state_width) {
+case class LRU(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULogic(ways, linePerWay, tagsReadAsync) {
 
   // Returns the next updated state upon touching a way
   override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
@@ -209,7 +295,7 @@ case class LRU(ways: Int, state_width: Int) extends LRULogic(ways, state_width) 
 
   // Returns the encoding of state for reset mode
   override def get_reset_state() : UInt = {
-    return U(0, state_width bits)
+    return U(0, stateWidth bits)
   }
 
   // Compare state with mask for each state to determine the LRU way
@@ -220,7 +306,7 @@ case class LRU(ways: Int, state_width: Int) extends LRULogic(ways, state_width) 
 }
 
 
-case class FIFO(ways: Int, state_width: Int) extends LRULogic(ways, state_width) {
+case class FIFO(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULogic(ways, linePerWay, tagsReadAsync) {
 
   // Returns the next updates state upon touching a way
   override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
@@ -238,7 +324,7 @@ case class FIFO(ways: Int, state_width: Int) extends LRULogic(ways, state_width)
 
   // Returns the encoding of state for reset mode
   override def get_reset_state() : UInt = {
-    return U(0, state_width bits)
+    return U(0, stateWidth bits)
   }
 
   // Compare state with mask for each state to determine the LRU way
