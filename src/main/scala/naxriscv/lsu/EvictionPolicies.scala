@@ -134,16 +134,31 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
   }
 
   override val write = new Area{
-    val valid = Bool()
-    val address = UInt(log2Up(linePerWay) bits)
-    val state = UInt(stateWidth bits)
+    val load = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
 
-    valid := False
-    address.assignDontCare()
-    state.assignDontCare()
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+    }
 
-    when (valid) {
-      counter := state
+    val store = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
+
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+    }
+
+    when (load.valid) {
+      counter := load.state
+    }
+    .elsewhen (store.valid) {
+      counter := store.state
     }
   }
 
@@ -250,26 +265,44 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
   }
 
   override val write = new Area{
-    val valid = Bool()
-    val address = UInt(log2Up(linePerWay) bits)
-    val state = UInt(stateWidth bits)
+    val load = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
 
-    valid := False
-    address.assignDontCare()
-    state.assignDontCare()
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+    }
+
+    val store = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
+
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+    }
+
+    val mem = Mem.fill(linePerWay)(UInt(stateWidth bits))
+    when (load.valid) {
+      mem.write(load.address, load.state, load.valid)
+    }
+    .elsewhen (store.valid) {
+      mem.write(store.address, store.state, store.valid)
+    }
   }
 
   override val read = new Area{
-    val mem = Mem.fill(linePerWay)(UInt(stateWidth bits))
-    mem.write(write.address, write.state, write.valid)
     val load = new Area{
-      val cmd = Flow(mem.addressType)
-      val rsp = if(tagsReadAsync) mem.readAsync(cmd.payload) else mem.readSync(cmd.payload, cmd.valid)
+      val cmd = Flow(write.mem.addressType)
+      val rsp = if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid)
       KeepAttribute(rsp)
     }
     val store = new Area{
-      val cmd = Flow(mem.addressType)
-      val rsp = if(tagsReadAsync) mem.readAsync(cmd.payload) else mem.readSync(cmd.payload, cmd.valid)
+      val cmd = Flow(write.mem.addressType)
+      val rsp = if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid)
       KeepAttribute(rsp)
     }
   }
