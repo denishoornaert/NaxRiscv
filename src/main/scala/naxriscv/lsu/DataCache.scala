@@ -59,7 +59,7 @@ case class DataLoadRsp(dataWidth : Int, refillCount : Int) extends Bundle {
 case class DataStorePort(postTranslationWidth: Int,
                          dataWidth: Int,
                          refillCount : Int) extends Bundle with IMasterSlave {
-  val cmd = Flow(DataStoreCmd(postTranslationWidth, dataWidth)) // TODO: make a stream
+  val cmd = Stream(DataStoreCmd(postTranslationWidth, dataWidth))
   val rsp = Flow(DataStoreRsp(postTranslationWidth, refillCount))
 
   override def asMaster() = {
@@ -1104,6 +1104,7 @@ class DataCache(val cacheSize: Int,
 
       import stage._
 
+      io.store.cmd.ready := isReady //True
       isValid := io.store.cmd.valid
       ADDRESS_POST_TRANSLATION := io.store.cmd.address
       CPU_WORD := io.store.cmd.data
