@@ -1383,7 +1383,7 @@ class Lsu2Plugin(var lqSize: Int,
         val size = mem.size.readAsync(ptr.writeBackReal)
         val data = mem.data.readAsync(ptr.writeBackReal)
         val skip = False //Used for store conditional
-        val doit = ptr.writeBack =/= ptr.commit && waitOn.ready && !prediction.valid
+        val doit = ptr.writeBack =/= ptr.commit && waitOn.ready && !prediction.valid && setup.cacheStore.cmd.ready
         val fire = CombInit(doit)
 
         setup.cacheStore.cmd.valid := doit
@@ -1401,7 +1401,7 @@ class Lsu2Plugin(var lqSize: Int,
         }
 
         when(prediction.valid){
-          setup.cacheStore.cmd.valid := True
+          setup.cacheStore.cmd.valid := setup.cacheStore.cmd.ready
           setup.cacheStore.cmd.address := prediction.payload
           setup.cacheStore.cmd.io := False
           setup.cacheStore.cmd.prefetch := True
