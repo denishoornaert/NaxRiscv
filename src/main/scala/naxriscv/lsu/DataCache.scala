@@ -455,6 +455,9 @@ class DataCache(val cacheSize: Int,
   }
  
   val policy = new RandomLFSR(wayCount, linePerWay, tagsReadAsync)
+  val cachedState = Reg(UInt(policy.stateWidth bits))
+  val cachedLoadValid = Reg(Bool())
+  val cachedStoreValid = Reg(Bool())
 
   val STATUS = Stageable(Vec.fill(wayCount)(Status()))
   val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
@@ -991,7 +994,8 @@ class DataCache(val cacheSize: Int,
       import controlStage._
 
       val reservation = tagsOrStatusWriteArbitration.create(2)
-      val refillWay = policy.get_replace_way(SET_META) //CombInit(wayRandom.value)
+      val rowState = (cachedLoadValid)? cachedState | SET_META
+      val refillWay = policy.get_replace_way(rowState)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = REFILL_HITS.orR
       val refillLoaded = (B(refill.slots.map(_.loaded)) & REFILL_HITS).orR
@@ -1040,13 +1044,17 @@ class DataCache(val cacheSize: Int,
       when (startRefill) { // Miss
         policy.write.load.valid := True
         policy.write.load.address := ADDRESS_PRE_TRANSLATION(lineRange)
-        policy.write.load.state := policy.get_next_state_miss(SET_META, refillWay)
+        policy.write.load.state := policy.get_next_state_miss(rowState, refillWay)
+        cachedState := policy.write.load.state
       }
       .elsewhen (isValid & WAYS_HIT) { // Hit
         policy.write.load.valid := True
         policy.write.load.address := ADDRESS_PRE_TRANSLATION(lineRange)
-        policy.write.load.state := policy.get_next_state_hit(SET_META, OHToUInt(WAYS_HITS))
+        policy.write.load.state := policy.get_next_state_hit(rowState, OHToUInt(WAYS_HITS))
+        cachedState := policy.write.load.state
       }
+
+      cachedLoadValid := startRefill | (isValid & WAYS_HIT)
       
       REFILL_SLOT_FULL := MISS && !refillHit && refill.full
       REFILL_SLOT := REFILL_HITS.andMask(!refillLoaded) | refill.free.andMask(askRefill)
@@ -1174,7 +1182,8 @@ class DataCache(val cacheSize: Int,
       GENERATION_OK := GENERATION === target || PREFETCH
 
       val reservation = tagsOrStatusWriteArbitration.create(3)
-      val refillWay = policy.get_replace_way(SET_META) //CombInit(wayRandom.value)
+      val rowState = (cachedStoreValid)? cachedState | SET_META
+      val refillWay = policy.get_replace_way(rowState) //CombInit(wayRandom.value)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = (REFILL_HITS & B(refill.slots.map(!_.loaded))).orR
       val lineBusy = isLineBusy(ADDRESS_POST_TRANSLATION, refillWay)
@@ -1251,18 +1260,23 @@ class DataCache(val cacheSize: Int,
       when (startFlush) { // Invalidate
         policy.write.store.valid := True
         policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
-        policy.write.store.state := policy.get_invalidate_state(SET_META, needFlushSel)
+        policy.write.store.state := policy.get_invalidate_state(rowState, needFlushSel)
+        cachedState := policy.write.store.state
       }
       .elsewhen (writeCache) { // Hit
         policy.write.store.valid := True
         policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
-        policy.write.store.state := policy.get_next_state_hit(SET_META, OHToUInt(WAYS_HITS))
+        policy.write.store.state := policy.get_next_state_hit(rowState, OHToUInt(WAYS_HITS))
+        cachedState := policy.write.store.state
       }
       .elsewhen (startRefill) { // Miss
         policy.write.store.valid := True
         policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
-        policy.write.store.state := policy.get_next_state_miss(SET_META, refillWay)
+        policy.write.store.state := policy.get_next_state_miss(rowState, refillWay)
+        cachedState := policy.write.store.state
       }
+
+      cachedStoreValid := startFlush | writeCache | startRefill
 
       when(writeCache){
         for((bank, bankId) <- banks.zipWithIndex) when(WAYS_HITS(bankId)){
