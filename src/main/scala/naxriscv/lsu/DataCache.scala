@@ -458,6 +458,7 @@ class DataCache(val cacheSize: Int,
   val cachedState = Reg(UInt(policy.stateWidth bits))
   val cachedLoadValid = Reg(Bool())
   val cachedStoreValid = Reg(Bool())
+  val cachedValid = cachedLoadValid | cachedStoreValid
 
   val STATUS = Stageable(Vec.fill(wayCount)(Status()))
   val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
@@ -994,7 +995,7 @@ class DataCache(val cacheSize: Int,
       import controlStage._
 
       val reservation = tagsOrStatusWriteArbitration.create(2)
-      val rowState = (cachedLoadValid)? cachedState | SET_META
+      val rowState = (cachedValid)? cachedState | SET_META
       val refillWay = policy.get_replace_way(rowState)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = REFILL_HITS.orR
@@ -1182,7 +1183,7 @@ class DataCache(val cacheSize: Int,
       GENERATION_OK := GENERATION === target || PREFETCH
 
       val reservation = tagsOrStatusWriteArbitration.create(3)
-      val rowState = (cachedStoreValid)? cachedState | SET_META
+      val rowState = (cachedValid)? cachedState | SET_META
       val refillWay = policy.get_replace_way(rowState) //CombInit(wayRandom.value)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = (REFILL_HITS & B(refill.slots.map(!_.loaded))).orR
