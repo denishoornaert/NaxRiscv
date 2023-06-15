@@ -14,10 +14,16 @@ abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean)
 
   val read = new Area{}
 
+  def get_valid_write_hit() : Bool
+
   def get_next_state_hit(state: UInt, touch_way: UInt) : UInt
+
+  def get_valid_write_miss() : Bool
 
   def get_next_state_miss(state: UInt, touch_way: UInt) : UInt
 
+  def get_valid_write_invalidate() : Bool
+  
   def get_invalidate_state(state: UInt, touch_way: UInt) : UInt
 
   def get_reset_state() : UInt
@@ -33,14 +39,28 @@ case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean)
 
   val counter = CounterFreeRun(log2Up(ways))
 
+  // State does not change upon hits
+  override def get_valid_write_hit() : Bool = {
+    return False
+  }
+
   override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
     return U(0, stateWidth bits) 
+  }
+
+  // State does not change upon hits
+  override def get_valid_write_miss() : Bool = {
+    return True
   }
 
   override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
     return U(0, stateWidth bits)
   }
 
+  override def get_valid_write_invalidate() : Bool = {
+    return False
+  }
+  
   override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
     return U(0, stateWidth bits)
   }
@@ -105,10 +125,22 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
 
   val counter = Reg(UInt(stateWidth bits)) init(1)
 
+  // State does not chnage upon hits
+  override def get_valid_write_hit() : Bool = {
+    return False
+  }
+
+  // State does not change upon hits (could be a constant value...)
   override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
     return state
   }
 
+  // State must be updated upon misses
+  override def get_valid_write_miss() : Bool = {
+    return True
+  }
+
+  // STate must be updated upon misses
   override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
     val newState = UInt(stateWidth bits)
     for (i <- 0 until stateWidth-1) {
@@ -121,6 +153,10 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
     return newState
   }
 
+  override def get_valid_write_invalidate() : Bool = {
+    return False
+  }
+  
   override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
     return state
   }
@@ -312,15 +348,29 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
 
 case class LRU(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULogic(ways, linePerWay, tagsReadAsync) {
 
+  // State changes upon hits
+  override def get_valid_write_hit() : Bool = {
+    return True
+  }
+
   // Returns the next updated state upon touching a way
   override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
     return upgrade_order_encoding(state, touch_way) 
+  }
+
+  // State changes upon hits
+  override def get_valid_write_miss() : Bool = {
+    return True
   }
 
   override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
     return upgrade_order_encoding(state, touch_way)
   }
 
+  override def get_valid_write_invalidate() : Bool = {
+    return True
+  }
+  
   // Returns the next updated state with indicated way being invalidated
   override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
     return downgrade_order_encoding(state, touch_way)
@@ -341,15 +391,29 @@ case class LRU(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULo
 
 case class FIFO(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULogic(ways, linePerWay, tagsReadAsync) {
 
+  // State does not change upon hits
+  override def get_valid_write_hit() : Bool = {
+    return False
+  }
+
   // Returns the next updates state upon touching a way
   override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
     return state
+  }
+
+  // State changes upon hits
+  override def get_valid_write_miss() : Bool = {
+    return True
   }
 
   override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
     return upgrade_order_encoding(state, touch_way)
   }
 
+  override def get_valid_write_invalidate() : Bool = {
+    return False
+  }
+  
   // Returns the next updated state with indicated way being invalidated
   override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
     return downgrade_order_encoding(state, touch_way)

@@ -1043,19 +1043,19 @@ class DataCache(val cacheSize: Int,
       }
 
       when (startRefill) { // Miss
-        policy.write.load.valid := True
+        policy.write.load.valid := policy.get_valid_write_miss()
         policy.write.load.address := ADDRESS_PRE_TRANSLATION(lineRange)
         policy.write.load.state := policy.get_next_state_miss(rowState, refillWay)
         cachedState := policy.write.load.state
       }
       .elsewhen (isValid & WAYS_HIT) { // Hit
-        policy.write.load.valid := True
+        policy.write.load.valid := policy.get_valid_write_hit()
         policy.write.load.address := ADDRESS_PRE_TRANSLATION(lineRange)
         policy.write.load.state := policy.get_next_state_hit(rowState, OHToUInt(WAYS_HITS))
         cachedState := policy.write.load.state
       }
-
-      cachedLoadValid := startRefill | (isValid & WAYS_HIT)
+      // caches any activy: default is false, in case of miss or hit caches the outcome
+      cachedLoadValid := policy.write.load.valid
       
       REFILL_SLOT_FULL := MISS && !refillHit && refill.full
       REFILL_SLOT := REFILL_HITS.andMask(!refillLoaded) | refill.free.andMask(askRefill)
@@ -1259,25 +1259,25 @@ class DataCache(val cacheSize: Int,
       }
 
       when (startFlush) { // Invalidate
-        policy.write.store.valid := True
+        policy.write.store.valid := policy.get_valid_write_invalidate()
         policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
         policy.write.store.state := policy.get_invalidate_state(rowState, needFlushSel)
         cachedState := policy.write.store.state
       }
       .elsewhen (writeCache) { // Hit
-        policy.write.store.valid := True
+        policy.write.store.valid := policy.get_valid_write_hit()
         policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
         policy.write.store.state := policy.get_next_state_hit(rowState, OHToUInt(WAYS_HITS))
         cachedState := policy.write.store.state
       }
       .elsewhen (startRefill) { // Miss
-        policy.write.store.valid := True
+        policy.write.store.valid := policy.get_valid_write_miss()
         policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
         policy.write.store.state := policy.get_next_state_miss(rowState, refillWay)
         cachedState := policy.write.store.state
       }
-
-      cachedStoreValid := startFlush | writeCache | startRefill
+      // caches any activy: default is false, in case of miss, hit, or invalidation caches the outcome
+      cachedStoreValid := policy.write.store.valid
 
       when(writeCache){
         for((bank, bankId) <- banks.zipWithIndex) when(WAYS_HITS(bankId)){
