@@ -10,9 +10,12 @@ import spinal.lib._
 
 abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean) extends Area {
 
-  val write = new Area{}
+  // Note: Is a policy specific hyper-parameter. It must be a scala Boolean in order to be evaluated during elaboration of the design.
+  val usesGlobalState = true
 
   val read = new Area{}
+
+  val write = new Area{}
 
   def get_valid_write_hit() : Bool
 
@@ -26,6 +29,10 @@ abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean)
   
   def get_invalidate_state(state: UInt, touch_way: UInt) : UInt
 
+  def get_cached_valid() : Bool
+
+  def get_cached_state() : UInt
+
   def get_reset_state() : UInt
 
   def get_replace_way(state: UInt) : UInt
@@ -38,6 +45,8 @@ case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean)
   val stateWidth = 0
 
   val counter = CounterFreeRun(log2Up(ways))
+
+  override val usesGlobalState = true
 
   // State does not change upon hits
   override def get_valid_write_hit() : Bool = {
@@ -62,6 +71,14 @@ case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean)
   }
   
   override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+    return U(0, stateWidth bits)
+  }
+
+  override def get_cached_valid() : Bool = {
+    return False
+  }
+
+  override def get_cached_state() : UInt = {
     return U(0, stateWidth bits)
   }
 
@@ -125,6 +142,8 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
 
   val counter = Reg(UInt(stateWidth bits)) init(1)
 
+  override val usesGlobalState = true
+
   // State does not chnage upon hits
   override def get_valid_write_hit() : Bool = {
     return False
@@ -161,41 +180,20 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
     return state
   }
 
+  override def get_cached_valid() : Bool = {
+    return write.load.cached.valid | write.store.cached.valid
+  }
+
+  override def get_cached_state() : UInt = {
+    return counter
+  }
+
   override def get_reset_state() : UInt = {
     return U(1, stateWidth bits)
   }
 
   override def get_replace_way(state: UInt) : UInt = {
     return state(log2Up(ways)-1 downto 0)
-  }
-
-  override val write = new Area{
-    val load = new Area{
-      val valid = Bool()
-      val address = UInt(log2Up(linePerWay) bits)
-      val state = UInt(stateWidth bits)
-
-      valid := False
-      address.assignDontCare()
-      state.assignDontCare()
-    }
-
-    val store = new Area{
-      val valid = Bool()
-      val address = UInt(log2Up(linePerWay) bits)
-      val state = UInt(stateWidth bits)
-
-      valid := False
-      address.assignDontCare()
-      state.assignDontCare()
-    }
-
-    when (load.valid) {
-      counter := load.state
-    }
-    .elsewhen (store.valid) {
-      counter := store.state
-    }
   }
 
   override val read = new Area{
@@ -209,6 +207,50 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
       val rsp = counter
       KeepAttribute(rsp)
     }
+  }
+
+  override val write = new Area{
+    val load = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
+
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+
+      val cached = new Area {
+        val valid = Reg(Bool())
+        val state = Reg(UInt(stateWidth bits))
+      }
+    }
+
+    val store = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
+
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+      
+      val cached = new Area {
+        val valid = Reg(Bool())
+        val state = Reg(UInt(stateWidth bits))
+      }
+    }
+
+    // Storing
+    when (load.valid) {
+      counter := load.state
+    }
+    .elsewhen (store.valid) {
+      counter := store.state
+    }
+
+    // Caching
+    load.cached.valid := load.valid
+    store.cached.valid := store.valid
   }
 
 }
@@ -300,6 +342,26 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
     return OHToUInt(least_recently_used)
   }
 
+  override val usesGlobalState = false
+
+  override def get_cached_valid() : Bool = {
+    // TODO: must include addres comming from parameter
+    // return (write.load.cached.valid & (write.load.cached.address === address)) | (write.store.cached.valid & (write.store.cached.valid & (write.store.cached.address === address)))
+    return write.load.cached.valid | write.store.cached.valid
+  }
+
+  override def get_cached_state() : UInt = {
+    // TODO: must include address comming from parameter
+    // return Mux(write.load.cached.address === address,
+    //    write.load.cached.state,
+    //    Mux(write.store.cached.address === address,
+    //      write.store.cached.state, write.store.cached.state,
+    //      U(0, stateWidth bits)
+    //    )
+    //  )
+    return write.load.cached.state
+  }
+
   override val write = new Area{
     val load = new Area{
       val valid = Bool()
@@ -309,6 +371,11 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
       valid := False
       address.assignDontCare()
       state.assignDontCare()
+
+      val cached = new Area {
+        val valid = Reg(Bool())
+        val state = Reg(UInt(stateWidth bits))
+      }
     }
 
     val store = new Area{
@@ -319,15 +386,26 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
       valid := False
       address.assignDontCare()
       state.assignDontCare()
+      
+      val cached = new Area {
+        val valid = Reg(Bool())
+        val state = Reg(UInt(stateWidth bits))
+      }
     }
 
+    // Storing state
     val mem = Mem.fill(linePerWay)(UInt(stateWidth bits))
-    when (load.valid) {
-      mem.write(load.address, load.state, load.valid)
-    }
-    .elsewhen (store.valid) {
-      mem.write(store.address, store.state, store.valid)
-    }
+    mem.write(load.address, load.state, load.valid)
+    mem.write(store.address, store.state, store.valid)
+  
+    // Caching
+    //// Load
+    load.cached.valid := load.valid
+    load.cached.state := load.state
+    //// Store
+    store.cached.valid := store.valid
+    store.cached.state := store.state
+
   }
 
   override val read = new Area{
