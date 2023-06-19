@@ -29,9 +29,9 @@ abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean)
   
   def get_invalidate_state(state: UInt, touch_way: UInt) : UInt
 
-  def get_cached_valid() : Bool
+  def get_cached_valid(address: UInt) : Bool
 
-  def get_cached_state() : UInt
+  def get_cached_state(address: UInt) : UInt
 
   def get_reset_state() : UInt
 
@@ -74,11 +74,11 @@ case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean)
     return U(0, stateWidth bits)
   }
 
-  override def get_cached_valid() : Bool = {
+  override def get_cached_valid(address: UInt) : Bool = {
     return False
   }
 
-  override def get_cached_state() : UInt = {
+  override def get_cached_state(address: UInt) : UInt = {
     return U(0, stateWidth bits)
   }
 
@@ -180,11 +180,11 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
     return state
   }
 
-  override def get_cached_valid() : Bool = {
+  override def get_cached_valid(address: UInt) : Bool = {
     return write.load.cached.valid | write.store.cached.valid
   }
 
-  override def get_cached_state() : UInt = {
+  override def get_cached_state(address: UInt) : UInt = {
     return counter
   }
 
@@ -344,22 +344,20 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
 
   override val usesGlobalState = false
 
-  override def get_cached_valid() : Bool = {
-    // TODO: must include addres comming from parameter
-    // return (write.load.cached.valid & (write.load.cached.address === address)) | (write.store.cached.valid & (write.store.cached.valid & (write.store.cached.address === address)))
-    return write.load.cached.valid | write.store.cached.valid
+  override def get_cached_valid(address: UInt) : Bool = {
+    val load_cache_hit = (write.load.cached.valid & (write.load.cached.address === address)) 
+    val store_cache_hit = (write.store.cached.valid & (write.store.cached.address === address))
+    return load_cache_hit | store_cache_hit
   }
 
-  override def get_cached_state() : UInt = {
-    // TODO: must include address comming from parameter
-    // return Mux(write.load.cached.address === address,
-    //    write.load.cached.state,
-    //    Mux(write.store.cached.address === address,
-    //      write.store.cached.state, write.store.cached.state,
-    //      U(0, stateWidth bits)
-    //    )
-    //  )
-    return write.load.cached.state
+  override def get_cached_state(address: UInt) : UInt = {
+    return Mux(write.load.cached.address === address,
+      write.load.cached.state,
+      Mux(write.store.cached.address === address,
+        write.store.cached.state,
+        U(0, stateWidth bits)
+      )
+    )
   }
 
   override val write = new Area{
@@ -374,6 +372,7 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
 
       val cached = new Area {
         val valid = Reg(Bool())
+        val address = Reg(UInt(log2Up(linePerWay) bits))
         val state = Reg(UInt(stateWidth bits))
       }
     }
@@ -389,22 +388,34 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
       
       val cached = new Area {
         val valid = Reg(Bool())
+        val address = Reg(UInt(log2Up(linePerWay) bits))
         val state = Reg(UInt(stateWidth bits))
       }
     }
 
     // Storing state
     val mem = Mem.fill(linePerWay)(UInt(stateWidth bits))
-    mem.write(load.address, load.state, load.valid)
-    mem.write(store.address, store.state, store.valid)
-  
+    //mem.write(load.address, load.state, load.valid)
+    //mem.write(store.address, store.state, store.valid)
+    mem.write(
+      Mux(load.valid, load.address, store.address),
+      Mux(load.valid, load.state  , store.state  ),
+      load.valid | store.valid
+    )
+
     // Caching
     //// Load
     load.cached.valid := load.valid
-    load.cached.state := load.state
+    when (load.valid) {
+      load.cached.address := load.address
+      load.cached.state := load.state
+    }
     //// Store
     store.cached.valid := store.valid
-    store.cached.state := store.state
+    when(store.valid) {
+      store.cached.address := store.address
+      store.cached.state := store.state
+    }
 
   }
 
