@@ -42,7 +42,7 @@ abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean)
 
 case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends EvictionPolicy(ways, linePerWay, tagsReadAsync) {
 
-  val stateWidth = 0
+  val stateWidth = 6
 
   val counter = CounterFreeRun(log2Up(ways))
 
@@ -90,16 +90,6 @@ case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean)
     return counter.value
   }
 
-  override val write = new Area{
-    val valid = Bool()
-    val address = UInt(log2Up(linePerWay) bits)
-    val state = UInt(stateWidth bits)
-
-    valid := False
-    address.assignDontCare()
-    state.assignDontCare()
-  }
-
   override val read = new Area{
     val load = new Area{
       val cmd = Flow(UInt(log2Up(linePerWay) bits))
@@ -113,6 +103,38 @@ case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean)
     }
   }
 
+  override val write = new Area{
+    val load = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
+
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+
+      val cached = new Area {
+        val valid = Reg(Bool())
+        val state = Reg(UInt(stateWidth bits))
+      }
+    }
+
+    val store = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
+
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+      
+      val cached = new Area {
+        val valid = Reg(Bool())
+        val state = Reg(UInt(stateWidth bits))
+      }
+    }
+
+  }
 }
 
 
@@ -447,7 +469,7 @@ case class LRU(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULo
     return upgrade_order_encoding(state, touch_way) 
   }
 
-  // State changes upon hits
+  // State changes upon misses
   override def get_valid_write_miss() : Bool = {
     return True
   }
@@ -490,7 +512,7 @@ case class FIFO(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRUL
     return state
   }
 
-  // State changes upon hits
+  // State changes upon misses
   override def get_valid_write_miss() : Bool = {
     return True
   }
@@ -501,6 +523,50 @@ case class FIFO(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRUL
 
   override def get_valid_write_invalidate() : Bool = {
     return False
+  }
+  
+  // Returns the next updated state with indicated way being invalidated
+  override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+    return downgrade_order_encoding(state, touch_way)
+  }
+
+  // Returns the encoding of state for reset mode
+  override def get_reset_state() : UInt = {
+    return U(0, stateWidth bits)
+  }
+
+  // Compare state with mask for each state to determine the LRU way
+  override def get_replace_way(state: UInt) : UInt = {
+    return get_least_recently_used(state)
+  }
+
+}
+
+
+case class LIP(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULogic(ways, linePerWay, tagsReadAsync) {
+
+  // State changes upon hits
+  override def get_valid_write_hit() : Bool = {
+    return True
+  }
+
+  // Returns the next updated state upon touching a way iff the touched way is also the least recently used way
+  override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
+    return Mux(touch_way === get_least_recently_used(state), upgrade_order_encoding(state, touch_way), state)
+  }
+
+  // State changes upon misses
+  override def get_valid_write_miss() : Bool = {
+    return True
+  }
+
+  // Make sure that teh selected way is at the lru place
+  override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
+    return downgrade_order_encoding(state, touch_way)
+  }
+
+  override def get_valid_write_invalidate() : Bool = {
+    return True
   }
   
   // Returns the next updated state with indicated way being invalidated

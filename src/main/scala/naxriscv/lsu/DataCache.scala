@@ -454,7 +454,7 @@ class DataCache(val cacheSize: Int,
     val dirty = Bool()
   }
  
-  val policy = new LRU(wayCount, linePerWay, tagsReadAsync)
+  val policy = new LIP(wayCount, linePerWay, tagsReadAsync)
 
   val STATUS = Stageable(Vec.fill(wayCount)(Status()))
   val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
