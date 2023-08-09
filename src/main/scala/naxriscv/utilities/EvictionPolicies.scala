@@ -1,6 +1,6 @@
 // See README.md for license details.
 
-package naxriscv.lsu
+package naxriscv.utilities
 
 import scala.collection.mutable.ArrayBuffer
 

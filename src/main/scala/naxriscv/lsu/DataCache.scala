@@ -1,6 +1,6 @@
 package naxriscv.lsu
 
-import naxriscv.utilities.{AddressToMask, Reservation}
+import naxriscv.utilities._
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
@@ -454,7 +454,7 @@ class DataCache(val cacheSize: Int,
     val dirty = Bool()
   }
  
-  val policy = new LIP(wayCount, linePerWay, tagsReadAsync)
+  val policy = new LRU(wayCount, linePerWay, tagsReadAsync)
 
   val STATUS = Stageable(Vec.fill(wayCount)(Status()))
   val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
@@ -560,6 +560,7 @@ class DataCache(val cacheSize: Int,
       waysWrite.mask.setAll()
       waysWrite.address := counter.resized
       waysWrite.tag.loaded := False
+      // TODO: counter does not have to be 
       when(counter === 0){
         policy.write.store.valid := True
         policy.write.store.address := counter.resized
