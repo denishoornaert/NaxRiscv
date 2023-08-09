@@ -455,6 +455,9 @@ class FetchCachePlugin(var cacheSize : Int,
         import readStage._
         policy.read.load.cmd.valid := !isStuck
         policy.read.load.cmd.payload := FETCH_PC(lineRange)
+      }
+      {
+        import hitsStage._
         SET_META := policy.read.load.rsp
       }
 
