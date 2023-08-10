@@ -1,6 +1,6 @@
 package naxriscv.lsu
 
-import naxriscv.utilities.{AddressToMask, Reservation}
+import naxriscv.utilities._
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}

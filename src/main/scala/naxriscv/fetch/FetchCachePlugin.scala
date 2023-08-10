@@ -4,6 +4,7 @@ import naxriscv.{Fetch, Global}
 import naxriscv.Global._
 import naxriscv.interfaces.{AddressTranslationPortUsage, AddressTranslationService, JumpService, PerformanceCounterService}
 import naxriscv.utilities._
+import spinal.core
 import spinal.core._
 import spinal.lib._
 import spinal.lib.pipeline.Stageable
@@ -246,7 +247,6 @@ class FetchCachePlugin(var cacheSize : Int,
     val memWordPerLine = lineSize/bytePerMemWord
     val tagWidth = PHYSICAL_WIDTH-log2Up(waySize)
 
-
     val tagRange = PHYSICAL_WIDTH-1 downto log2Up(linePerWay*lineSize)
     val lineRange = tagRange.low-1 downto log2Up(lineSize)
 
@@ -257,8 +257,6 @@ class FetchCachePlugin(var cacheSize : Int,
     val bankWordToCpuWordRange = log2Up(bankWidth/8)-1 downto log2Up(bytePerFetchWord)
     val memToBankRatio = bankWidth*bankCount / memDataWidth
     val bankWord = HardType(Bits(bankWidth bits))
-
-
 
     val readStage = setup.pipeline.getStage(readAt)
     val hitsStage = setup.pipeline.getStage(hitsAt)
@@ -278,21 +276,21 @@ class FetchCachePlugin(var cacheSize : Int,
     )
     val tpk = translationPort.keys
 
-
     case class Tag() extends Bundle{
       val loaded = Bool()
       val error = Bool()
       val address = UInt(tagWidth bits)
     }
 
+    val policy = LRU(wayCount, linePerWay, tagsReadAsync)
+
     val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
     val WAYS_TAGS = Stageable(Vec.fill(wayCount)(Tag()))
     val WAYS_HITS = Stageable(Vec.fill(wayCount)(Bool()))
     val WAYS_HIT = Stageable(Bool())
+    val SET_META = Stageable(UInt(policy.stateWidth bits))
 
     val BANKS_MUXES = Stageable(Vec.fill(bankCount)(Bits(cpuWordWidth bits)))
-
-
 
     val banks = for(id <- 0 until bankCount) yield new Area{
       val mem = Mem(Bits(bankWidth bits), bankWordCount)
@@ -334,9 +332,13 @@ class FetchCachePlugin(var cacheSize : Int,
       }
 
       when(!done) {
-        waysWrite.mask := (default -> true)
+        waysWrite.mask.setAll()
         waysWrite.address := counter.resized
         waysWrite.tag.loaded := False
+        // policy
+        policy.write.load.valid := True
+        policy.write.load.address := counter.resized
+        policy.write.load.state := policy.get_reset_state()
       }
 
       readStage.haltIt(!done || requested)
@@ -359,19 +361,24 @@ class FetchCachePlugin(var cacheSize : Int,
         val valid = False
         val address = UInt(PHYSICAL_WIDTH bits)
         val isIo = Bool()
+        val wayToAllocate = UInt(log2Up(wayCount) bits)
       }
     
       val fire = False
       val valid = RegInit(False) clearWhen (fire)
       val address = KeepAttribute(Reg(UInt(PHYSICAL_WIDTH bits)))
       val isIo = Reg(Bool())
+      val wayToAllocate = Reg(UInt(log2Up(wayCount) bits))
       val hadError = RegInit(False)
       
       when(!valid){
         valid setWhen(start.valid)
         address := start.address
         isIo := start.isIo
+        wayToAllocate := start.wayToAllocate
       }
+
+      start.wayToAllocate.assignDontCare()
 
       invalidate.canStart clearWhen(valid)
 
@@ -380,7 +387,6 @@ class FetchCachePlugin(var cacheSize : Int,
       mem.cmd.address := address(tagRange.high downto lineRange.low) @@ U(0, lineRange.low bit)
       mem.cmd.io := isIo
 
-      val wayToAllocate = Counter(wayCount, !valid)
       val wordIndex = KeepAttribute(Reg(UInt(log2Up(memWordPerLine) bits)) init (0))
 
       when(invalidate.done) {
@@ -398,7 +404,7 @@ class FetchCachePlugin(var cacheSize : Int,
           bank.write.address := address(lineRange) @@ wordIndex
           bank.write.data := mem.rsp.data
         } else {
-          val sel = U(bankId) - wayToAllocate.value
+          val sel = U(bankId) - wayToAllocate
           val groupSel = wayToAllocate(log2Up(bankCount)-1 downto log2Up(bankCount/memToBankRatio))
           val subSel = sel(log2Up(bankCount/memToBankRatio) -1 downto 0)
           bank.write.valid := mem.rsp.valid && groupSel === (bankId >> log2Up(bankCount/memToBankRatio))
@@ -445,6 +451,16 @@ class FetchCachePlugin(var cacheSize : Int,
       }
 
 
+      {
+        import readStage._
+        policy.read.load.cmd.valid := !isStuck
+        policy.read.load.cmd.payload := FETCH_PC(lineRange)
+      }
+      {
+        import hitsStage._
+        SET_META := policy.read.load.rsp
+      }
+
       val onWays = for((way, wayId) <- ways.zipWithIndex) yield new Area{
         {
           import readStage._
@@ -474,9 +490,6 @@ class FetchCachePlugin(var cacheSize : Int,
         WORD_FAULT := (B(WAYS_HITS) & B(WAYS_TAGS.map(_.error))).orR || WORD_FAULT_PAGE || tpk.ACCESS_FAULT
         WORD_FAULT_PAGE := tpk.PAGE_FAULT || !tpk.ALLOW_EXECUTE
 
-
-
-
         val redoIt = False
         when(redoIt){
           setup.redoJump.valid := True
@@ -484,12 +497,31 @@ class FetchCachePlugin(var cacheSize : Int,
           setup.pipeline.getStage(0).haltIt() //"optional"
         }
 
+        val indicator = Bool()
+        indicator := isValid
+
+        val state = (policy.get_cached_valid(FETCH_PC(lineRange)))? policy.get_cached_state(FETCH_PC(lineRange)) | SET_META
+        val refillWay = policy.get_replace_way(state)
+
         when(isValid) {
           when(tpk.REDO) {
             redoIt := True
           } elsewhen (!WORD_FAULT_PAGE && !tpk.ACCESS_FAULT && !WAYS_HIT) {
+            // Miss
             redoIt := True
             refill.start.valid := True
+            refill.start.wayToAllocate := refillWay
+            // state update
+            policy.write.load.valid := policy.get_valid_write_miss()
+            policy.write.load.address := FETCH_PC(lineRange)
+            policy.write.load.state := policy.get_next_state_miss(state, refillWay)
+          } elsewhen(!WORD_FAULT_PAGE && !tpk.ACCESS_FAULT && WAYS_HIT) {
+            // Hit
+            redoIt := False
+            // state update
+            policy.write.load.valid := policy.get_valid_write_hit()
+            policy.write.load.address := FETCH_PC(lineRange)
+            policy.write.load.state := policy.get_next_state_hit(state, OHToUInt(WAYS_HITS))
           }
         }
         refill.start.address := tpk.TRANSLATED
@@ -516,9 +548,6 @@ class FetchCachePlugin(var cacheSize : Int,
         }
       }
     }
-
-
-
 
     translation.release()
     setup.pipeline.lock.release()
