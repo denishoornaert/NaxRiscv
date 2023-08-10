@@ -59,7 +59,7 @@ case class DataLoadRsp(dataWidth : Int, refillCount : Int) extends Bundle {
 case class DataStorePort(postTranslationWidth: Int,
                          dataWidth: Int,
                          refillCount : Int) extends Bundle with IMasterSlave {
-  val cmd = Flow(DataStoreCmd(postTranslationWidth, dataWidth))
+  val cmd = Stream(DataStoreCmd(postTranslationWidth, dataWidth))
   val rsp = Flow(DataStoreRsp(postTranslationWidth, refillCount))
 
   override def asMaster() = {
@@ -413,7 +413,6 @@ class DataCache(val cacheSize: Int,
   val memWordPerLine = lineSize/bytePerMemWord
   val tagWidth = postTranslationWidth-log2Up(waySize)
 
-
   val tagRange = postTranslationWidth-1 downto log2Up(linePerWay*lineSize)
   val lineRange = tagRange.low-1 downto log2Up(lineSize)
   val refillRange = tagRange.high downto lineRange.low
@@ -454,9 +453,12 @@ class DataCache(val cacheSize: Int,
   case class Status() extends Bundle{
     val dirty = Bool()
   }
+ 
+  val policy = new LRU(wayCount, linePerWay, tagsReadAsync)
 
   val STATUS = Stageable(Vec.fill(wayCount)(Status()))
   val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
+  val SET_META = Stageable(UInt(policy.stateWidth bits))
   val WAYS_TAGS = Stageable(Vec.fill(wayCount)(Tag()))
   val WAYS_HITS = Stageable(Bits(wayCount bits))
   val WAYS_HIT = Stageable(Bool())
@@ -548,8 +550,6 @@ class DataCache(val cacheSize: Int,
     }
   }
 
-  val wayRandom = CounterFreeRun(wayCount)
-
   val invalidate = new Area{
     val counter = Reg(UInt(log2Up(linePerWay)+1 bits)) init(0)
     val done = counter.msb
@@ -560,6 +560,10 @@ class DataCache(val cacheSize: Int,
       waysWrite.mask.setAll()
       waysWrite.address := counter.resized
       waysWrite.tag.loaded := False
+      // reset cache rows' states
+      policy.write.store.valid := True
+      policy.write.store.address := counter.resized
+      policy.write.store.state := policy.get_reset_state()
     }
   }
 
@@ -949,6 +953,9 @@ class DataCache(val cacheSize: Int,
         WAYS_HIT := B(WAYS_HITS).orR
       }
 
+      policy.read.load.cmd.valid := !controlStage.isStuck
+      policy.read.load.cmd.payload := controlStage(ADDRESS_PRE_TRANSLATION)(lineRange)
+      pipeline.stages(loadControlAt)(SET_META) := policy.read.load.rsp;
 
       status.loadRead.cmd.valid := !readTagsStage.isStuck
       status.loadRead.cmd.payload := readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange)
@@ -983,7 +990,8 @@ class DataCache(val cacheSize: Int,
       import controlStage._
 
       val reservation = tagsOrStatusWriteArbitration.create(2)
-      val refillWay = CombInit(wayRandom.value)
+      val rowState = (policy.get_cached_valid(ADDRESS_PRE_TRANSLATION(lineRange)))? policy.get_cached_state(ADDRESS_PRE_TRANSLATION(lineRange)) | SET_META
+      val refillWay = policy.get_replace_way(rowState)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = REFILL_HITS.orR
       val refillLoaded = (B(refill.slots.map(_.loaded)) & REFILL_HITS).orR
@@ -997,12 +1005,14 @@ class DataCache(val cacheSize: Int,
       val canRefill = !refill.full && !lineBusy && reservation.win && !(refillWayNeedWriteback && writeback.full)
       val askRefill = MISS && canRefill && !refillHit
       val startRefill = isValid && askRefill
+      
 
       when(ABORD){
         REDO := False
         MISS := False
       }
 
+      // If a miss has occured
       when(startRefill){
         reservation.takeIt()
 
@@ -1027,6 +1037,17 @@ class DataCache(val cacheSize: Int,
         writeback.push.way := refillWay
       }
 
+      when (startRefill) { // Miss
+        policy.write.load.valid := policy.get_valid_write_miss()
+        policy.write.load.address := ADDRESS_PRE_TRANSLATION(lineRange)
+        policy.write.load.state := policy.get_next_state_miss(rowState, refillWay)
+      }
+      .elsewhen (isValid & WAYS_HIT) { // Hit
+        policy.write.load.valid := policy.get_valid_write_hit()
+        policy.write.load.address := ADDRESS_PRE_TRANSLATION(lineRange)
+        policy.write.load.state := policy.get_next_state_hit(rowState, OHToUInt(WAYS_HITS))
+      }
+      
       REFILL_SLOT_FULL := MISS && !refillHit && refill.full
       REFILL_SLOT := REFILL_HITS.andMask(!refillLoaded) | refill.free.andMask(askRefill)
     }
@@ -1074,12 +1095,23 @@ class DataCache(val cacheSize: Int,
 
     val target = RegInit(False)
 
+//    if (policy.usesGlobalState) {
+      val race = load.readTagsStage.isValid & readTagsStage.isValid
+      readTagsStage.haltIt(race)
+//    }
+//    else {
+//      val race = load.readTagsStage.isValid & readTagsStage.isValid
+//      val sameRow = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange) === readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
+//      readTagsStage.haltIt(race & sameRow)
+//    }
+
     waysHazard((storeReadBanksAt+1 to storeControlAt).map(pipeline.stages(_)), ADDRESS_POST_TRANSLATION)
     val start = new Area {
       val stage = pipeline.stages.head
 
       import stage._
 
+      io.store.cmd.ready := isReady //True
       isValid := io.store.cmd.valid
       ADDRESS_POST_TRANSLATION := io.store.cmd.address
       CPU_WORD := io.store.cmd.data
@@ -1111,6 +1143,10 @@ class DataCache(val cacheSize: Int,
         import hitStage._;
         WAYS_HIT := B(WAYS_HITS).orR
       }
+
+      policy.read.store.cmd.valid := !controlStage.isStuck
+      policy.read.store.cmd.payload := controlStage(ADDRESS_POST_TRANSLATION)(lineRange)
+      pipeline.stages(storeControlAt)(SET_META) := policy.read.store.rsp
 
       status.storeRead.cmd.valid := !readTagsStage.isStuck
       status.storeRead.cmd.payload := readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
@@ -1145,7 +1181,8 @@ class DataCache(val cacheSize: Int,
       GENERATION_OK := GENERATION === target || PREFETCH
 
       val reservation = tagsOrStatusWriteArbitration.create(3)
-      val refillWay = CombInit(wayRandom.value)
+      val rowState = (policy.get_cached_valid(ADDRESS_POST_TRANSLATION(lineRange)))? policy.get_cached_state(ADDRESS_POST_TRANSLATION(lineRange)) | SET_META
+      val refillWay = policy.get_replace_way(rowState) //CombInit(wayRandom.value)
       val refillWayNeedWriteback = WAYS_TAGS(refillWay).loaded && STATUS(refillWay).dirty
       val refillHit = (REFILL_HITS & B(refill.slots.map(!_.loaded))).orR
       val lineBusy = isLineBusy(ADDRESS_POST_TRANSLATION, refillWay)
@@ -1155,7 +1192,7 @@ class DataCache(val cacheSize: Int,
 
       REDO := MISS || waysHitHazard || bankBusy || refillHit || (wasClean && !reservation.win)
       MISS := !WAYS_HIT && !waysHitHazard && !refillHit
-
+      
       val canRefill = !refill.full && !lineBusy && !load.ctrl.startRefill && reservation.win && !(refillWayNeedWriteback && writeback.full)
       val askRefill = MISS && canRefill && !refillHit
       val startRefill = isValid && GENERATION_OK && askRefill
@@ -1203,6 +1240,7 @@ class DataCache(val cacheSize: Int,
         writeback.push.way := FLUSH ? needFlushSel | refillWay
       }
 
+      // If a miss has occured
       when(startRefill){
         refill.push.valid := True
         refill.push.address := ADDRESS_POST_TRANSLATION
@@ -1216,6 +1254,22 @@ class DataCache(val cacheSize: Int,
         waysWrite.tag.address := ADDRESS_POST_TRANSLATION(tagRange)
 
         whenIndexed(status.write.data, refillWay)(_.dirty := False)
+      }
+
+      when (startFlush) { // Invalidate
+        policy.write.store.valid := policy.get_valid_write_invalidate()
+        policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
+        policy.write.store.state := policy.get_invalidate_state(rowState, needFlushSel)
+      }
+      .elsewhen (writeCache) { // Hit
+        policy.write.store.valid := policy.get_valid_write_hit()
+        policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
+        policy.write.store.state := policy.get_next_state_hit(rowState, OHToUInt(WAYS_HITS))
+      }
+      .elsewhen (startRefill) { // Miss
+        policy.write.store.valid := policy.get_valid_write_miss()
+        policy.write.store.address := ADDRESS_POST_TRANSLATION(lineRange)
+        policy.write.store.state := policy.get_next_state_miss(rowState, refillWay)
       }
 
       when(writeCache){
