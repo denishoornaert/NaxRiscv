@@ -373,9 +373,11 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
   }
 
   override def get_cached_state(address: UInt) : UInt = {
-    return Mux(write.load.cached.address === address,
+    val load_cache_hit = (write.load.cached.valid & (write.load.cached.address === address)) 
+    val store_cache_hit = (write.store.cached.valid & (write.store.cached.address === address))
+    return Mux(load_cache_hit,
       write.load.cached.state,
-      Mux(write.store.cached.address === address,
+      Mux(store_cache_hit,
         write.store.cached.state,
         U(0, stateWidth bits)
       )
@@ -417,8 +419,6 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
 
     // Storing state
     val mem = Mem.fill(linePerWay)(UInt(stateWidth bits))
-    //mem.write(load.address, load.state, load.valid)
-    //mem.write(store.address, store.state, store.valid)
     mem.write(
       Mux(load.valid, load.address, store.address),
       Mux(load.valid, load.state  , store.state  ),

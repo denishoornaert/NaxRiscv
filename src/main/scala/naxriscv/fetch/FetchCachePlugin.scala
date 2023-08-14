@@ -499,6 +499,10 @@ class FetchCachePlugin(var cacheSize : Int,
 
         val indicator = Bool()
         indicator := isValid
+        val inidicator_miss = Bool()
+        inidicator_miss := !WORD_FAULT_PAGE && !tpk.ACCESS_FAULT && !WAYS_HIT
+        val inidicator_hit = Bool()
+        inidicator_hit := !WORD_FAULT_PAGE && !tpk.ACCESS_FAULT && WAYS_HIT
 
         val state = (policy.get_cached_valid(FETCH_PC(lineRange)))? policy.get_cached_state(FETCH_PC(lineRange)) | SET_META
         val refillWay = policy.get_replace_way(state)
