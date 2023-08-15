@@ -432,24 +432,33 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
       load.cached.address := load.address
       load.cached.state := load.state
     }
+    .otherwise {
+      load.cached.address := 0
+      load.cached.state := 0
+    }
     //// Store
     store.cached.valid := store.valid
     when(store.valid) {
       store.cached.address := store.address
       store.cached.state := store.state
     }
+    .otherwise {
+      store.cached.address := 0
+      store.cached.state := 0
+    }
 
   }
 
+  // TODO: remove Mux in rsp. Only there for debug
   override val read = new Area{
     val load = new Area{
       val cmd = Flow(write.mem.addressType)
-      val rsp = if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid)
+      val rsp = Mux(cmd.valid, if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid), U(0, stateWidth bits))
       KeepAttribute(rsp)
     }
     val store = new Area{
       val cmd = Flow(write.mem.addressType)
-      val rsp = if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid)
+      val rsp = Mux(cmd.valid, if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid), U(0, stateWidth bits))
       KeepAttribute(rsp)
     }
   }
