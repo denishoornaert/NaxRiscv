@@ -376,7 +376,7 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
   override val usesGlobalState = false
 
   // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
-  override val banks = 2
+  override val banks = 4
   val bankRange = log2Up(banks)-1 downto 0 
   val indexRange = log2Up(linePerWay)-1 downto log2Up(banks)
 
