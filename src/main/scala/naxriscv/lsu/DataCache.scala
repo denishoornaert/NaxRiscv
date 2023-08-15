@@ -953,9 +953,9 @@ class DataCache(val cacheSize: Int,
         WAYS_HIT := B(WAYS_HITS).orR
       }
 
-      policy.read.load.cmd.valid := !controlStage.isStuck
-      policy.read.load.cmd.payload := controlStage(ADDRESS_PRE_TRANSLATION)(lineRange)
-      pipeline.stages(loadControlAt)(SET_META) := policy.read.load.rsp;
+      policy.read.load.cmd.valid := (!pipeline.stages(loadControlAt-1).isStuck) && pipeline.stages(loadControlAt-1).isValid
+      policy.read.load.cmd.payload := pipeline.stages(loadControlAt-1)(ADDRESS_PRE_TRANSLATION)(lineRange)
+      pipeline.stages(loadControlAt-1 + (!tagsReadAsync).toInt)(SET_META) := policy.read.load.rsp
 
       status.loadRead.cmd.valid := !readTagsStage.isStuck
       status.loadRead.cmd.payload := readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange)
@@ -1144,10 +1144,10 @@ class DataCache(val cacheSize: Int,
         WAYS_HIT := B(WAYS_HITS).orR
       }
 
-      policy.read.store.cmd.valid := !controlStage.isStuck
-      policy.read.store.cmd.payload := controlStage(ADDRESS_POST_TRANSLATION)(lineRange)
-      pipeline.stages(storeControlAt)(SET_META) := policy.read.store.rsp
-
+      policy.read.store.cmd.valid := (!pipeline.stages(storeControlAt-1).isStuck) && pipeline.stages(storeControlAt-1).isValid
+      policy.read.store.cmd.payload := pipeline.stages(storeControlAt-1)(ADDRESS_POST_TRANSLATION)(lineRange)
+      pipeline.stages(storeControlAt-1 + (!tagsReadAsync).toInt)(SET_META) := policy.read.store.rsp
+      
       status.storeRead.cmd.valid := !readTagsStage.isStuck
       status.storeRead.cmd.payload := readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
       pipeline.stages(storeReadTagsAt + (!tagsReadAsync).toInt)(STATUS) := status.storeRead.rsp
