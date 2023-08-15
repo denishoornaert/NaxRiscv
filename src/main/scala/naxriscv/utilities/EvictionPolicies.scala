@@ -13,6 +13,9 @@ abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean)
   // Note: Is a policy specific hyper-parameter. It must be a scala Boolean in order to be evaluated during elaboration of the design.
   val usesGlobalState = true
 
+  // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
+  val banks = 1
+
   val read = new Area{}
 
   val write = new Area{}
@@ -48,6 +51,9 @@ case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean)
 
   override val usesGlobalState = true
 
+  // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
+  override val banks = 1
+  
   // State does not change upon hits
   override def get_valid_write_hit() : Bool = {
     return False
@@ -165,6 +171,9 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
   val counter = Reg(UInt(stateWidth bits)) init(1)
 
   override val usesGlobalState = true
+
+  // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
+  override val banks = 1
 
   // State does not chnage upon hits
   override def get_valid_write_hit() : Bool = {
@@ -366,6 +375,11 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
 
   override val usesGlobalState = false
 
+  // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
+  override val banks = 4
+  val bankRange = log2Up(banks)-1 downto 0 
+  val indexRange = log2Up(linePerWay)-1 downto log2Up(banks)
+
   override def get_cached_valid(address: UInt) : Bool = {
     val load_cache_hit = (write.load.cached.valid & (write.load.cached.address === address)) 
     val store_cache_hit = (write.store.cached.valid & (write.store.cached.address === address))
@@ -418,12 +432,19 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
     }
 
     // Storing state
-    val mem = Mem.fill(linePerWay)(UInt(stateWidth bits))
-    mem.write(
-      Mux(load.valid, load.address, store.address),
-      Mux(load.valid, load.state  , store.state  ),
-      load.valid | store.valid
-    )
+    val mem = for(id <- 0 until banks) yield new Area {
+      val bank = Mem.fill(linePerWay/banks)(UInt(stateWidth bits))
+      val addrload = load.address(bankRange)
+      val addrstore = store.address(bankRange)
+      val selload = (addrload === id)
+      val selstore = (addrstore === id)
+
+      bank.write(
+        Mux(load.valid & selload, load.address(indexRange), store.address(indexRange)),
+        Mux(store.valid & selstore, load.state  , store.state  ),
+        (load.valid & selload) | (store.valid & selstore)
+      )
+    }
 
     // Caching
     //// Load
@@ -452,13 +473,15 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
   // TODO: remove Mux in rsp. Only there for debug
   override val read = new Area{
     val load = new Area{
-      val cmd = Flow(write.mem.addressType)
-      val rsp = Mux(cmd.valid, if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid), U(0, stateWidth bits))
+      val cmd = Flow(UInt(log2Up(linePerWay) bits)) // write.mem.addressType/banks? // Note: Assumes that 'mem(0)' and 'mem(1)' store the same type. This should be safe by design.
+      //val rsp = if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid)
+      val rsp = cmd.payload(bankRange).muxList(for (b <- 0 until banks) yield (b, if (tagsReadAsync) write.mem(b).bank.readAsync(cmd.payload(indexRange)) else write.mem(b).bank.readSync(cmd.payload(indexRange), cmd.valid)))
       KeepAttribute(rsp)
     }
     val store = new Area{
-      val cmd = Flow(write.mem.addressType)
-      val rsp = Mux(cmd.valid, if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid), U(0, stateWidth bits))
+      val cmd = Flow(UInt(log2Up(linePerWay) bits)) // Note: Assumes that 'mem(0)' and 'mem(1)' stores the same type. This should be safe by desing.
+      //val rsp = if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid)
+      val rsp = cmd.payload(bankRange).muxList(for (b <- 0 until banks) yield (b, if (tagsReadAsync) write.mem(b).bank.readAsync(cmd.payload(indexRange)) else write.mem(b).bank.readSync(cmd.payload(indexRange), cmd.valid)))
       KeepAttribute(rsp)
     }
   }
