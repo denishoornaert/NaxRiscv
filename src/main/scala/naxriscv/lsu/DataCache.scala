@@ -1095,14 +1095,17 @@ class DataCache(val cacheSize: Int,
 
     val target = RegInit(False)
 
+    // TODO: second condition clause might be redundant
 //    if (policy.usesGlobalState) {
-      val race = load.readTagsStage.isValid & readTagsStage.isValid
-      readTagsStage.haltIt(race)
+//      val race = load.readTagsStage.isValid & readTagsStage.isValid
+//      readTagsStage.haltIt(race)
 //    }
 //    else {
-//      val race = load.readTagsStage.isValid & readTagsStage.isValid
-//      val sameRow = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange) === readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
-//      readTagsStage.haltIt(race & sameRow)
+      val race = load.readTagsStage.isValid & readTagsStage.isValid
+      //val sameRow = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange) === readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
+      val sameBank = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange)(policy.bankRange) === readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)(policy.bankRange)
+      //val sameBank = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange.low, log2Up(policy.banks)) === readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange.low, log2Up(policy.banks))
+      readTagsStage.haltIt(race & sameBank)
 //    }
 
     waysHazard((storeReadBanksAt+1 to storeControlAt).map(pipeline.stages(_)), ADDRESS_POST_TRANSLATION)
