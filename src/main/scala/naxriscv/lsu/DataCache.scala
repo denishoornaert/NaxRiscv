@@ -350,6 +350,7 @@ class DataCache(val cacheSize: Int,
                 val cpuDataWidth: Int,
                 val preTranslationWidth: Int,
                 val postTranslationWidth: Int,
+                val evictionPolicy: String,
                 val loadRefillCheckEarly : Boolean = true,
                 val storeRefillCheckEarly : Boolean = true,
                 val lineSize: Int = 64,
@@ -454,7 +455,7 @@ class DataCache(val cacheSize: Int,
     val dirty = Bool()
   }
  
-  val policy = new LRU(wayCount, linePerWay, tagsReadAsync)
+  val policy = EvictionPolicy.make(evictionPolicy, wayCount, linePerWay, tagsReadAsync, 2)
 
   val STATUS = Stageable(Vec.fill(wayCount)(Status()))
   val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
@@ -1096,17 +1097,17 @@ class DataCache(val cacheSize: Int,
     val target = RegInit(False)
 
     // TODO: second condition clause might be redundant
-//    if (policy.usesGlobalState) {
-//      val race = load.readTagsStage.isValid & readTagsStage.isValid
-//      readTagsStage.haltIt(race)
-//    }
-//    else {
+    if (policy.usesGlobalState) {
       val race = load.readTagsStage.isValid & readTagsStage.isValid
-      //val sameRow = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange) === readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
-      val sameBank = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange)(policy.bankRange) === readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)(policy.bankRange)
-      //val sameBank = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange.low, log2Up(policy.banks)) === readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange.low, log2Up(policy.banks))
+      readTagsStage.haltIt(race)
+    }
+    else {
+      val race = load.readTagsStage.isValid & readTagsStage.isValid
+      val loadRow = load.readTagsStage(ADDRESS_PRE_TRANSLATION)(lineRange)
+      val storeRow = readTagsStage(ADDRESS_POST_TRANSLATION)(lineRange)
+      val sameBank = loadRow(policy.bankRange) === storeRow(policy.bankRange)
       readTagsStage.haltIt(race & sameBank)
-//    }
+    }
 
     waysHazard((storeReadBanksAt+1 to storeControlAt).map(pipeline.stages(_)), ADDRESS_POST_TRANSLATION)
     val start = new Area {
