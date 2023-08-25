@@ -97,6 +97,7 @@ object Config{
     plugins += new FetchCachePlugin(
       cacheSize = 4096*4,
       wayCount = 4,
+      lineSize = 64,
       injectionAt = 2,
       fetchDataWidth = 64,
       memDataWidth = 64,
@@ -126,7 +127,8 @@ object Config{
           ctrlAt = 1,
           rspAt = 1
         )
-      }
+      },
+      evictionPolicy = "LRU"
     )
     plugins += new AlignerPlugin(
       decodeCount = decodeCount,
@@ -266,18 +268,20 @@ object Config{
     }
 
     plugins += new DataCachePlugin(
-      memDataWidth = 64,
-      cacheSize    = 4096*4,
-      wayCount     = 4,
-      refillCount = 2,
-      writebackCount = 2,
-      tagsReadAsync = withDistributedRam,
-      loadReadTagsAt = if(withDistributedRam) 1 else 0,
-      storeReadTagsAt = if(withDistributedRam) 1 else 0,
+      memDataWidth     = 64,
+      cacheSize        = 4096*4,
+      wayCount         = 4,
+      lineSize         = 64,
+      refillCount      = 2,
+      writebackCount   = 2,
+      tagsReadAsync    = withDistributedRam,
+      loadReadTagsAt   = if(withDistributedRam) 1 else 0,
+      storeReadTagsAt  = if(withDistributedRam) 1 else 0,
       reducedBankWidth = false,
       //      loadHitAt      = 2
       //      loadRspAt      = 3,
-      loadRefillCheckEarly = false
+      loadRefillCheckEarly = false,
+      evictionPolicy = "LRU"
     )
 
     //MISC
