@@ -182,6 +182,7 @@ class FetchCachePlugin(var cacheSize : Int,
                        var fetchDataWidth : Int,
                        var translationStorageParameter : Any,
                        var translationPortParameter : Any,
+                       var evictionPolicy : String,
                        var lineSize : Int = 64,
                        var readAt : Int = 0,
                        var hitsAt : Int = 1,
@@ -282,7 +283,7 @@ class FetchCachePlugin(var cacheSize : Int,
       val address = UInt(tagWidth bits)
     }
 
-    val policy = LRU(wayCount, linePerWay, tagsReadAsync)
+    val policy = EvictionPolicy.make(evictionPolicy, wayCount, linePerWay, tagsReadAsync, 1)
 
     val BANKS_WORDS = Stageable(Vec.fill(bankCount)(bankWord()))
     val WAYS_TAGS = Stageable(Vec.fill(wayCount)(Tag()))
