@@ -8,17 +8,70 @@ import spinal.core._
 import spinal.lib._
 
 
-abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean) extends Area {
+abstract class EvictionPolicy(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) extends Area {
 
   // Note: Is a policy specific hyper-parameter. It must be a scala Boolean in order to be evaluated during elaboration of the design.
-  val usesGlobalState = true
+  val usesGlobalState = false
 
   // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
-  val banks = 1
+  val bankRange = log2Up(banks)-1 downto 0 
+  val indexRange = log2Up(linePerWay)-1 downto log2Up(banks)
+  
+  // Placeholder
+  val stateWidth = 1
 
-  val read = new Area{}
+  // Mock Areas placed here for interfacing
+  val read = new Area{
+    val load = new Area{
+      val cmd = Flow(UInt(log2Up(linePerWay) bits))
+      val rsp = U(0, stateWidth bits)
+      KeepAttribute(rsp)
+    }
+    val store = new Area{
+      val cmd = Flow(UInt(log2Up(linePerWay) bits))
+      val rsp = U(0, stateWidth bits)
+      KeepAttribute(rsp)
+    }
+  }
 
-  val write = new Area{}
+  // Mock Areas placed here for interfacing
+  val write = new Area{
+    val load = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
+
+      // May not be needed
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+      
+      // May not be needed
+      val cached = new Area {
+        val valid = Reg(Bool())
+        val address = Reg(UInt(log2Up(linePerWay) bits))
+        val state = Reg(UInt(stateWidth bits))
+      }
+    }
+
+    val store = new Area{
+      val valid = Bool()
+      val address = UInt(log2Up(linePerWay) bits)
+      val state = UInt(stateWidth bits)
+
+      // May not be needed
+      valid := False
+      address.assignDontCare()
+      state.assignDontCare()
+      
+      // May not be needed
+      val cached = new Area {
+        val valid = Reg(Bool())
+        val address = Reg(UInt(log2Up(linePerWay) bits))
+        val state = Reg(UInt(stateWidth bits))
+      }
+    }
+  }
 
   def get_valid_write_hit() : Bool
 
@@ -43,17 +96,14 @@ abstract class EvictionPolicy(way: Int, linePerWay: Int, tagsReadAsync: Boolean)
 }
 
 
-case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends EvictionPolicy(ways, linePerWay, tagsReadAsync) {
+case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) extends EvictionPolicy(ways, linePerWay, tagsReadAsync, banks) {
 
-  val stateWidth = 6
+  override val stateWidth = 6
 
   val counter = CounterFreeRun(log2Up(ways))
 
   override val usesGlobalState = true
 
-  // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
-  override val banks = 1
-  
   // State does not change upon hits
   override def get_valid_write_hit() : Bool = {
     return False
@@ -96,57 +146,12 @@ case class RandomFreeCounter(ways: Int, linePerWay: Int, tagsReadAsync: Boolean)
     return counter.value
   }
 
-  override val read = new Area{
-    val load = new Area{
-      val cmd = Flow(UInt(log2Up(linePerWay) bits))
-      val rsp = U(0, stateWidth bits)
-      KeepAttribute(rsp)
-    }
-    val store = new Area{
-      val cmd = Flow(UInt(log2Up(linePerWay) bits))
-      val rsp = U(0, stateWidth bits)
-      KeepAttribute(rsp)
-    }
-  }
-
-  override val write = new Area{
-    val load = new Area{
-      val valid = Bool()
-      val address = UInt(log2Up(linePerWay) bits)
-      val state = UInt(stateWidth bits)
-
-      valid := False
-      address.assignDontCare()
-      state.assignDontCare()
-
-      val cached = new Area {
-        val valid = Reg(Bool())
-        val state = Reg(UInt(stateWidth bits))
-      }
-    }
-
-    val store = new Area{
-      val valid = Bool()
-      val address = UInt(log2Up(linePerWay) bits)
-      val state = UInt(stateWidth bits)
-
-      valid := False
-      address.assignDontCare()
-      state.assignDontCare()
-      
-      val cached = new Area {
-        val valid = Reg(Bool())
-        val state = Reg(UInt(stateWidth bits))
-      }
-    }
-
-  }
 }
 
 
-case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends EvictionPolicy(ways, linePerWay, tagsReadAsync) {
+case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) extends EvictionPolicy(ways, linePerWay, tagsReadAsync, banks) {
 
-  val stateWidth = 6
+  override val stateWidth = 6
 
   // From "Table of Linear Feedback Shift Register" by Roy Ward and Tim Molteno
   // LFSR-4 is always chosen unless only LFSR-2 is available
@@ -171,9 +176,6 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
   val counter = Reg(UInt(stateWidth bits)) init(1)
 
   override val usesGlobalState = true
-
-  // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
-  override val banks = 1
 
   // State does not chnage upon hits
   override def get_valid_write_hit() : Bool = {
@@ -227,69 +229,26 @@ case class RandomLFSR(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extend
     return state(log2Up(ways)-1 downto 0)
   }
 
-  override val read = new Area{
-    val load = new Area{
-      val cmd = Flow(UInt(log2Up(linePerWay) bits))
-      val rsp = counter
-      KeepAttribute(rsp)
-    }
-    val store = new Area{
-      val cmd = Flow(UInt(log2Up(linePerWay) bits))
-      val rsp = counter
-      KeepAttribute(rsp)
-    }
+  // Storing
+  when (write.load.valid) {
+    counter := write.load.state
+  }
+  .elsewhen (write.store.valid) {
+    counter := write.store.state
   }
 
-  override val write = new Area{
-    val load = new Area{
-      val valid = Bool()
-      val address = UInt(log2Up(linePerWay) bits)
-      val state = UInt(stateWidth bits)
-
-      valid := False
-      address.assignDontCare()
-      state.assignDontCare()
-
-      val cached = new Area {
-        val valid = Reg(Bool())
-        val state = Reg(UInt(stateWidth bits))
-      }
-    }
-
-    val store = new Area{
-      val valid = Bool()
-      val address = UInt(log2Up(linePerWay) bits)
-      val state = UInt(stateWidth bits)
-
-      valid := False
-      address.assignDontCare()
-      state.assignDontCare()
-      
-      val cached = new Area {
-        val valid = Reg(Bool())
-        val state = Reg(UInt(stateWidth bits))
-      }
-    }
-
-    // Storing
-    when (load.valid) {
-      counter := load.state
-    }
-    .elsewhen (store.valid) {
-      counter := store.state
-    }
-
-    // Caching
-    load.cached.valid := load.valid
-    store.cached.valid := store.valid
-  }
-
+  // Caching
+  write.load.cached.valid := write.load.valid
+  write.store.cached.valid := write.store.valid
+  
+  override val read.load.rsp = counter
+  override val read.store.rsp = counter
 }
 
 
-abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends EvictionPolicy(ways, linePerWay, tagsReadAsync) {
+abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) extends EvictionPolicy(ways, linePerWay, tagsReadAsync, banks) {
 
-  val stateWidth = ((ways*ways)-ways)/2
+  override val stateWidth = ((ways*ways)-ways)/2
 
   def zero_mask_indices(index: Int) : Array[Int] = {
     var i = stateWidth-1
@@ -375,11 +334,6 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
 
   override val usesGlobalState = false
 
-  // indicates the amount of banks used by the policy. Whenever the state is global, 'banks' must be set to 1
-  override val banks = 4
-  val bankRange = log2Up(banks)-1 downto 0 
-  val indexRange = log2Up(linePerWay)-1 downto log2Up(banks)
-
   override def get_cached_valid(address: UInt) : Bool = {
     val load_cache_hit = (write.load.cached.valid & (write.load.cached.address === address)) 
     val store_cache_hit = (write.store.cached.valid & (write.store.cached.address === address))
@@ -397,6 +351,11 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
       )
     )
   }
+
+//  override val write.load.state = UInt(stateWidth bits)
+//  override val write.load.cached.state = Reg(UInt(stateWidth bits))
+//  override val write.store.state = UInt(stateWidth bits)
+//  override val write.store.cached.state = Reg(UInt(stateWidth bits))
 
   override val write = new Area{
     val load = new Area{
@@ -430,58 +389,57 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
         val state = Reg(UInt(stateWidth bits))
       }
     }
-
-    // Storing state
-    val mem = for(id <- 0 until banks) yield new Area {
-      val bank = Mem.fill(linePerWay/banks)(UInt(stateWidth bits))
-      val addrload = load.address(bankRange)
-      val addrstore = store.address(bankRange)
-      val selload = (addrload === id)
-      val selstore = (addrstore === id)
-
-      bank.write(
-        Mux(load.valid & selload, load.address(indexRange), store.address(indexRange)),
-        Mux(store.valid & selstore, load.state  , store.state  ),
-        (load.valid & selload) | (store.valid & selstore)
-      )
-    }
-
-    // Caching
-    //// Load
-    load.cached.valid := load.valid
-    when (load.valid) {
-      load.cached.address := load.address
-      load.cached.state := load.state
-    }
-    .otherwise {
-      load.cached.address := 0
-      load.cached.state := 0
-    }
-    //// Store
-    store.cached.valid := store.valid
-    when(store.valid) {
-      store.cached.address := store.address
-      store.cached.state := store.state
-    }
-    .otherwise {
-      store.cached.address := 0
-      store.cached.state := 0
-    }
-
   }
 
-  // TODO: remove Mux in rsp. Only there for debug
+  // Storing state
+  val mem = for(id <- 0 until banks) yield new Area {
+    val bank = Mem.fill(linePerWay/banks)(UInt(stateWidth bits))
+    val addrload = write.load.address(bankRange)
+    val addrstore = write.store.address(bankRange)
+    val selload = (addrload === id)
+    val selstore = (addrstore === id)
+    bank.write(
+      Mux(write.load.valid & selload, write.load.address(indexRange), write.store.address(indexRange)),
+      Mux(write.load.valid & selload, write.load.state  , write.store.state  ),
+      (write.load.valid & selload) | (write.store.valid & selstore)
+    )
+  }
+
+  // Caching
+  //// Load
+  write.load.cached.valid := write.load.valid
+  when (write.load.valid) {
+    write.load.cached.address := write.load.address
+    write.load.cached.state := write.load.state
+  }
+  .otherwise {
+    write.load.cached.address := 0
+    write.load.cached.state := 0
+  }
+  //// Store
+  write.store.cached.valid := write.store.valid
+  when(write.store.valid) {
+    write.store.cached.address := write.store.address
+    write.store.cached.state := write.store.state
+  }
+  .otherwise {
+    write.store.cached.address := 0
+    write.store.cached.state := 0
+  }
+
+//  override val read.load.rsp = read.load.cmd.payload(bankRange).muxList(for (b <- 0 until banks) yield (b, if (tagsReadAsync) mem(b).bank.readAsync(read.load.cmd.payload(indexRange)) else mem(b).bank.readSync(read.load.cmd.payload(indexRange), read.load.cmd.valid)))
+//  override val read.store.rsp = read.store.cmd.payload(bankRange).muxList(for (b <- 0 until banks) yield (b, if (tagsReadAsync) mem(b).bank.readAsync(read.store.cmd.payload(indexRange)) else mem(b).bank.readSync(read.store.cmd.payload(indexRange), read.store.cmd.valid)))
+
+
   override val read = new Area{
     val load = new Area{
-      val cmd = Flow(UInt(log2Up(linePerWay) bits)) // write.mem.addressType/banks? // Note: Assumes that 'mem(0)' and 'mem(1)' store the same type. This should be safe by design.
-      //val rsp = if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid)
-      val rsp = cmd.payload(bankRange).muxList(for (b <- 0 until banks) yield (b, if (tagsReadAsync) write.mem(b).bank.readAsync(cmd.payload(indexRange)) else write.mem(b).bank.readSync(cmd.payload(indexRange), cmd.valid)))
+      val cmd = Flow(UInt(log2Up(linePerWay) bits))
+      val rsp = cmd.payload(bankRange).muxList(for (b <- 0 until banks) yield (b, if (tagsReadAsync) mem(b).bank.readAsync(cmd.payload(indexRange)) else mem(b).bank.readSync(cmd.payload(indexRange), cmd.valid)))
       KeepAttribute(rsp)
     }
     val store = new Area{
-      val cmd = Flow(UInt(log2Up(linePerWay) bits)) // Note: Assumes that 'mem(0)' and 'mem(1)' stores the same type. This should be safe by desing.
-      //val rsp = if(tagsReadAsync) write.mem.readAsync(cmd.payload) else write.mem.readSync(cmd.payload, cmd.valid)
-      val rsp = cmd.payload(bankRange).muxList(for (b <- 0 until banks) yield (b, if (tagsReadAsync) write.mem(b).bank.readAsync(cmd.payload(indexRange)) else write.mem(b).bank.readSync(cmd.payload(indexRange), cmd.valid)))
+      val cmd = Flow(UInt(log2Up(linePerWay) bits))
+      val rsp = cmd.payload(bankRange).muxList(for (b <- 0 until banks) yield (b, if (tagsReadAsync) mem(b).bank.readAsync(cmd.payload(indexRange)) else mem(b).bank.readSync(cmd.payload(indexRange), cmd.valid)))
       KeepAttribute(rsp)
     }
   }
@@ -489,7 +447,7 @@ abstract class LRULogic(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) exte
 }
 
 
-case class LRU(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULogic(ways, linePerWay, tagsReadAsync) {
+case class LRU(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) extends LRULogic(ways, linePerWay, tagsReadAsync, banks) {
 
   // State changes upon hits
   override def get_valid_write_hit() : Bool = {
@@ -532,7 +490,7 @@ case class LRU(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULo
 }
 
 
-case class FIFO(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULogic(ways, linePerWay, tagsReadAsync) {
+case class FIFO(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) extends LRULogic(ways, linePerWay, tagsReadAsync, banks) {
 
   // State does not change upon hits
   override def get_valid_write_hit() : Bool = {
@@ -575,7 +533,7 @@ case class FIFO(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRUL
 }
 
 
-case class LIP(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULogic(ways, linePerWay, tagsReadAsync) {
+case class LIP(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) extends LRULogic(ways, linePerWay, tagsReadAsync, banks) {
 
   // State changes upon hits
   override def get_valid_write_hit() : Bool = {
@@ -614,6 +572,23 @@ case class LIP(ways: Int, linePerWay: Int, tagsReadAsync: Boolean) extends LRULo
   // Compare state with mask for each state to determine the LRU way
   override def get_replace_way(state: UInt) : UInt = {
     return get_least_recently_used(state)
+  }
+
+}
+
+object EvictionPolicy {
+  
+  def make(policy: String, ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) : EvictionPolicy = {
+    val supportedPolicies = List("RandomFreeCounter", "RandomLFSR", "LRU", "FIFO", "LIP")
+    assert(supportedPolicies.contains(policy), "Specified eviction policy ("+policy+") not available!")
+    val res = policy match {
+      case "RandomFreeCounter" => new RandomFreeCounter(ways, linePerWay, tagsReadAsync, banks)
+      case "RandomLFSR"        =>        new RandomLFSR(ways, linePerWay, tagsReadAsync, banks)
+      case "LRU"               =>               new LRU(ways, linePerWay, tagsReadAsync, banks)
+      case "FIFO"              =>              new FIFO(ways, linePerWay, tagsReadAsync, banks)
+      case "LIP"               =>               new LIP(ways, linePerWay, tagsReadAsync, banks)
+    }
+    return res
   }
 
 }
