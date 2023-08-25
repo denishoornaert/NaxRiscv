@@ -5,7 +5,7 @@ import naxriscv.Global.{FLEN, PHYSICAL_WIDTH, VIRTUAL_EXT_WIDTH, XLEN}
 import naxriscv.interfaces.{AddressTranslationService, LockedImpl, PerformanceCounterService}
 import spinal.core._
 import spinal.lib._
-import naxriscv.utilities.{DocPlugin, Plugin}
+import naxriscv.utilities.{DocPlugin, Plugin, EvictionPolicy}
 import spinal.lib.pipeline.Pipeline
 
 import scala.collection.mutable.ArrayBuffer
@@ -17,6 +17,7 @@ class DataCachePlugin(var memDataWidth : Int,
                       var wayCount: Int,
                       var refillCount : Int,
                       var writebackCount : Int,
+                      var evictionPolicy : String,
                       var lineSize: Int = 64,
                       var loadRefillCheckEarly : Boolean = true,
                       var storeRefillCheckEarly : Boolean = true,
@@ -132,7 +133,8 @@ class DataCachePlugin(var memDataWidth : Int,
       storeControlAt   = storeControlAt,
       storeRspAt       = storeRspAt,
       tagsReadAsync    = tagsReadAsync,
-      reducedBankWidth = reducedBankWidth
+      reducedBankWidth = reducedBankWidth,
+      evictionPolicy   = evictionPolicy
     )
 
     setup.writebackBusy <> cache.io.writebackBusy
