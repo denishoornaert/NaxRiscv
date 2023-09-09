@@ -402,6 +402,8 @@ class DataCache(val cacheSize: Int,
     val refillEvent = out Bool()
     val writebackEvent = out Bool()
     val writebackBusy = out Bool()
+    val loadAccessEvent = out Bool()
+    val storeAccessEvent = out Bool()
   }
 
   val cpuWordWidth = cpuDataWidth
@@ -1319,7 +1321,8 @@ class DataCache(val cacheSize: Int,
     pipeline.build()
   }
 
-
+  io.loadAccessEvent := io.load.cmd.valid & io.load.cmd.ready 
+  io.storeAccessEvent := io.store.cmd.valid & io.store.cmd.ready
   io.refillEvent := refill.push.valid
   io.writebackEvent := writeback.push.valid
 }

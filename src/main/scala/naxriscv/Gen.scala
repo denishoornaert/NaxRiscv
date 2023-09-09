@@ -308,7 +308,7 @@ object Config{
       debugTriggers = debugTriggers
     ))
     if(withPerfCounters) plugins += new PerformanceCounterPlugin(
-      additionalCounterCount = 4,
+      additionalCounterCount = 6,
       bufferWidth            = 6
     )
 

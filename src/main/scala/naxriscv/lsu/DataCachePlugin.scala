@@ -95,6 +95,8 @@ class DataCachePlugin(var memDataWidth : Int,
     val perf = getServiceOption[PerformanceCounterService]
     val refillEvent = perf.map(_.createEventPort(PerformanceCounterService.DCACHE_REFILL))
     val writebackEvent = perf.map(_.createEventPort(PerformanceCounterService.DCACHE_WRITEBACK))
+    val loadAccessEvent = perf.map(_.createEventPort(PerformanceCounterService.DCACHE_LOADACCESS))
+    val storeAccessEvent = perf.map(_.createEventPort(PerformanceCounterService.DCACHE_STOREACCESS))
 
     val refillCompletions = Bits(refillCount bits)
 
@@ -141,6 +143,8 @@ class DataCachePlugin(var memDataWidth : Int,
     setup.lockPort <> cache.io.lock
     setup.refillEvent.map(_ := RegNext(cache.io.refillEvent) init(False))
     setup.writebackEvent.map(_ := RegNext(cache.io.writebackEvent) init(False))
+    setup.loadAccessEvent.map(_ := RegNext(cache.io.loadAccessEvent) init(False))
+    setup.storeAccessEvent.map(_ := RegNext(cache.io.storeAccessEvent) init(False))
 
     setup.refillCompletions := cache.io.refillCompletions
 

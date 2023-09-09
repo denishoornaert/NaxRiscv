@@ -573,6 +573,8 @@ object PerformanceCounterService{
   val DCACHE_REFILL = 2
   val DCACHE_WRITEBACK = 3
   val BRANCH_MISS = 4
+  val DCACHE_LOADACCESS = 5
+  val DCACHE_STOREACCESS = 6
 }
 
 trait PerformanceCounterService extends Service with LockedImpl{
