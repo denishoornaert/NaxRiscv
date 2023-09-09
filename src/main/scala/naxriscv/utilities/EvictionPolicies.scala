@@ -576,6 +576,59 @@ case class LIP(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) e
 
 }
 
+
+case class BIP(ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int, denominator: Int) extends LRULogic(ways, linePerWay, tagsReadAsync, banks) {
+
+  override val stateWidth = 6
+
+  // Find the relevant range to compare to in the random number register
+  assert(List(1, 2, 4, 8, 16, 32, 64).contains(denominator), "BIP does not support 1/"+denominator+" probability. `denominator` must be included in [1, 2, 4, 8, 16, 32, 64]")
+  val relevantRange = log2Up(denominator)-1 downto 0
+
+  // Random number register
+  val random_number = CounterFreeRun(stateWidth)
+
+  // State changes upon hits
+  override def get_valid_write_hit() : Bool = {
+    return True
+  }
+
+  // Returns the next updated state upon touching a way iff the touched way is also the least recently used way
+  override def get_next_state_hit(state: UInt, touch_way: UInt) : UInt = {
+    return upgrade_order_encoding(state, touch_way) 
+  }
+
+  // State changes upon misses
+  override def get_valid_write_miss() : Bool = {
+    return True
+  }
+
+  // Make sure that teh selected way is at the lru place
+  override def get_next_state_miss(state: UInt, touch_way: UInt) : UInt = {
+    return Mux(random_number(relevantRange) === 0, upgrade_order_encoding(state, touch_way), downgrade_order_encoding(state, touch_way))
+  }
+
+  override def get_valid_write_invalidate() : Bool = {
+    return True
+  }
+  
+  // Returns the next updated state with indicated way being invalidated
+  override def get_invalidate_state(state: UInt, touch_way: UInt) : UInt = {
+    return downgrade_order_encoding(state, touch_way)
+  }
+
+  // Returns the encoding of state for reset mode
+  override def get_reset_state() : UInt = {
+    return U(0, stateWidth bits)
+  }
+
+  // Compare state with mask for each state to determine the LRU way
+  override def get_replace_way(state: UInt) : UInt = {
+    return get_least_recently_used(state)
+  }
+
+}
+
 object EvictionPolicy {
   
   def make(policy: String, ways: Int, linePerWay: Int, tagsReadAsync: Boolean, banks: Int) : EvictionPolicy = {
@@ -587,6 +640,7 @@ object EvictionPolicy {
       case "LRU"               =>               new LRU(ways, linePerWay, tagsReadAsync, banks)
       case "FIFO"              =>              new FIFO(ways, linePerWay, tagsReadAsync, banks)
       case "LIP"               =>               new LIP(ways, linePerWay, tagsReadAsync, banks)
+      case "BIP"               =>               new BIP(ways, linePerWay, tagsReadAsync, banks, 16)
     }
     return res
   }
