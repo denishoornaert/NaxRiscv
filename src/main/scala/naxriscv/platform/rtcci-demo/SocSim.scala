@@ -6,7 +6,7 @@ import naxriscv.platform.{FileBackend, NaxriscvProbe, NaxriscvTilelinkProbe, Per
 import spinal.core._
 import spinal.core.fiber.Fiber
 import spinal.core.sim._
-import spinal.lib.bus.amba4.axi.sim.{AxiMemorySim, AxiMemorySimConfig}
+import spinal.lib.bus.amba4.axi.sim.{Axi4MemorySim, AxiMemorySimConfig}
 import spinal.lib.bus.tilelink.ScopeFiber
 import spinal.lib.bus.tilelink.sim.{Checker, MemoryAgent}
 import spinal.lib.misc.Elf
@@ -56,7 +56,8 @@ object SocSim extends App {
   var asic = false
   var naxCount = 1
   var xlen = 32
-  var outstandingTransactions = 8
+  var memoryMaxTransactions = 8
+  var memoryResponseTime = 0
   val bins = ArrayBuffer[(Long, String)]()
   val elfs = ArrayBuffer[String]()
 
@@ -68,7 +69,8 @@ object SocSim extends App {
     opt[Unit]("no-rvls") action { (v, c) => withRvls = false }
     opt[Unit]("asic") action { (v, c) => asic = true }
     opt[Int]("nax-count") action { (v, c) => naxCount = v }
-    opt[Int]("transactions") action { (v, c) => outstandingTransactions = v }
+    opt[Int]("mem-max-trans") action { (v, c) => memoryMaxTransactions = v }
+    opt[Int]("mem-resp-time") action { (v, c) => memoryResponseTime = v }
     opt[Seq[String]]("load-bin") unbounded() action { (v, c) => bins += (lang.Long.parseLong(v(0), 16) -> v(1)) }
     opt[String]("load-elf") unbounded() action { (v, c) => elfs += v }
   }.parse(args, Unit).nonEmpty)
@@ -120,15 +122,17 @@ object SocSim extends App {
   // Testbench code
   def testIt(dut : SocDemoSim, onTrace : (=> Unit) => Unit = cb => {}): Unit = {
     val cd = dut.clockDomain
-    cd.forkStimulus(10)
+    cd.forkStimulus(10 ns)
     // cd.forkSimSpeedPrinter(1.0)
 
     // Connect the few peripherals
     val memConfig = AxiMemorySimConfig(
-      maxOutstandingReads = outstandingTransactions,
-      maxOutstandingWrites = outstandingTransactions
+      maxOutstandingReads = memoryMaxTransactions,
+      maxOutstandingWrites = memoryMaxTransactions,
+      readResponseDelay = memoryResponseTime,
+      writeResponseDelay = memoryResponseTime
     )
-    val ma = new AxiMemorySim(dut.bridge.down, cd, memConfig)
+    val ma = new Axi4MemorySim(dut.bridge.down, cd, memConfig)
     ma.start() // must start all threads in simulation
     val pa = new PeripheralEmulator(dut.peripheral.emulated.node.bus, dut.peripheral.custom.mei, dut.peripheral.custom.sei, cd)
 
