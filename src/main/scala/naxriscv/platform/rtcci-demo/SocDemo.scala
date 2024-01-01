@@ -1,4 +1,4 @@
-package naxriscv.platform.tilelinkdemo
+package naxriscv.platform.rtccidemo
 
 import naxriscv.lsu.DataCachePlugin
 import naxriscv.platform.{RvlsBackend, TilelinkNaxRiscvFiber}
@@ -19,7 +19,7 @@ import spinal.lib.misc.plic.TilelinkPlicFiber
 import spinal.lib.system.tag.PMA
 
 // SocDemo is a little SoC made only for simulation purposes.
-class SocDemo(cpuCount : Int, withL2 : Boolean = true, asic : Boolean = false, xlen : Int = 32) extends Component {
+class SocDemo(cpuCount : Int, asic : Boolean = false, xlen : Int = 32) extends Component {
   // Create a few NaxRiscv cpu
   val naxes = for(hartId <- 0 until cpuCount) yield new TilelinkNaxRiscvFiber().setCoherentConfig(hartId, asic = asic, xlen = xlen)
 
@@ -30,57 +30,19 @@ class SocDemo(cpuCount : Int, withL2 : Boolean = true, asic : Boolean = false, x
     ioFilter.up << List(nax.pBus)
   }
 
-  var nonCoherent: Node = null
-  
-  val noL2 = !withL2 generate new Area {
-    val hub = new HubFiber()
-    hub.up << memFilter.down
-    hub.up.setUpConnection(a = StreamPipe.FULL, c = StreamPipe.FULL)
-    hub.down.forceDataWidth(64)
-    nonCoherent = hub.down
-  }
-
-  val l2 = withL2 generate new Area {
-    val cache = new CacheFiber()
-    cache.parameter.cacheWays = 4
-    cache.parameter.cacheBytes = 128 * 1024
-    cache.up << memFilter.down
-    cache.up.setUpConnection(a = StreamPipe.FULL, c = StreamPipe.FULL, d = StreamPipe.FULL)
-    cache.down.setDownConnection(d = StreamPipe.S2M)
-    cache.down.forceDataWidth(64)
-    nonCoherent = cache.down
-  }
-
-//  // Handle memory coherency
-//  var nonCoherent: Node = null
-//
-//  val noL2 = !withL2 generate new Area {
-//    val hub = new HubFiber()
-//    hub.up << memFilter.down
-//    nonCoherent = hub.down
-//  }
-//
-//  val l2 = withL2 generate new Area {
-//    val cache = new CacheFiber()
-//    cache.parameter.cacheWays = 4
-//    cache.parameter.cacheBytes = 128 * 1024
-//    cache.up << memFilter.down
-//    nonCoherent = cache.down
-//  }
-//
-//  // Create a tilelink memory bus which will get out of the SoC to connect the main memory
-//  val mem = new tilelink.fabric.SlaveBusAny()
-//  mem.node at SizeMapping(0x80000000l, 0x80000000l) of nonCoherent
-//  mem.node.addTag(PMA.MAIN)
+  // Creates tilelink Hub to connect cores
+  val hub = new HubFiber()
+  hub.up << memFilter.down
+  hub.up.setUpConnection(a = StreamPipe.FULL, c = StreamPipe.FULL)
+  hub.down.forceDataWidth(64) // TODO: better way to set the width? Getting value from cores' bus?
+  var nonCoherent = hub.down
 
   // Tilelink to AXi4 conversion
   val bridge = new tilelink.fabric.Axi4Bridge
-  bridge.up.forceDataWidth(64)
+  bridge.up.forceDataWidth(64) // TODO: better way to get the width? Getting value from cores' bus?
   bridge.down.addTag(PMA.MAIN)
   bridge.up at SizeMapping(0x80000000l, 0x80000000l) of nonCoherent
   val mBus = Fiber build master(bridge.down)
-//  val bridge = new tilelink.Axi4Bridge(nonCoherent.bus.p.node)
-//  bridge.io.up << nonCoherent.bus
 
   // Handle all the IO / Peripheral things
   val peripheral = new Area {

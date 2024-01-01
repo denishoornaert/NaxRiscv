@@ -2,7 +2,7 @@ package spinal.lib.misc
 
 import net.fornwall.jelf.{ElfFile, ElfSection, ElfSectionHeader, ElfSymbol, ElfSymbolTableSection}
 import spinal.lib.sim.SparseMemory
-import spinal.lib.bus.amba4.axi.sim.SparseMemory
+import spinal.lib.bus.amba4.axi.sim.{SparseMemory => AxiSparseMemory}
 
 import java.io.File
 import java.nio.file.Files
@@ -38,6 +38,17 @@ class Elf(val f : File, addressWidth : Int){
         val data = getData(section)
         val memoryAddress = (section.header.sh_addr - offset) & ((BigInt(1) << addressWidth)-1).toLong
         mem.write(memoryAddress, data)
+      }
+    }
+  }
+
+  // Only difference with the SparceMemory class from spinal is the `writeArray` mthod
+  def load(mem : AxiSparseMemory, offset : Long): Unit ={
+    foreachSection{section =>
+      if((section.header.sh_flags & ElfSectionHeader.FLAG_ALLOC) != 0){
+        val data = getData(section)
+        val memoryAddress = (section.header.sh_addr - offset) & ((BigInt(1) << addressWidth)-1).toLong
+        mem.writeArray(memoryAddress, data)
       }
     }
   }
@@ -82,22 +93,6 @@ class Elf(val f : File, addressWidth : Int){
     }
     null
   }
-}
-
-// Class specialized interfacing with AxiMemorySim
-class ElfAxi(val f : File, addressWidth : Int) extends Elf(f, addressWidth) {
-
-  // Only difference with the SparceMemory class from spinal is the `writeArray` mthod
-  override def load(mem : SparseMemory, offset : Long): Unit ={
-    foreachSection{section =>
-      if((section.header.sh_flags & ElfSectionHeader.FLAG_ALLOC) != 0){
-        val data = getData(section)
-        val memoryAddress = (section.header.sh_addr - offset) & ((BigInt(1) << addressWidth)-1).toLong
-        mem.writeArray(memoryAddress, data)
-      }
-    }
-  }
-
 }
 
 object ElfTest extends App{

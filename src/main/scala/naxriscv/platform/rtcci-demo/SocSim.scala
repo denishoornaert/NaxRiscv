@@ -1,4 +1,4 @@
-package naxriscv.platform.tilelinkdemo
+package naxriscv.platform.rtccidemo
 
 import naxriscv.fetch.FetchCachePlugin
 import naxriscv.lsu.DataCachePlugin
@@ -54,7 +54,6 @@ object SocSim extends App {
   var dualSim = false // Double simulation, one ahead of the other which will trigger wave capture of the second simulation when it fail
   var traceIt = false
   var withRvls = true
-  var withL2 = true
   var asic = false
   var naxCount = 1
   var xlen = 32
@@ -67,7 +66,6 @@ object SocSim extends App {
     opt[Unit]("dual-sim") action { (v, c) => dualSim = true }
     opt[Unit]("trace") action { (v, c) => traceIt = true }
     opt[Unit]("no-rvls") action { (v, c) => withRvls = false }
-    opt[Unit]("no-l2") action { (v, c) => withL2 = false }
     opt[Unit]("asic") action { (v, c) => asic = true }
     opt[Int]("nax-count") action { (v, c) => naxCount = v }
     opt[Seq[String]]("load-bin") unbounded() action { (v, c) => bins += (lang.Long.parseLong(v(0), 16) -> v(1)) }
@@ -77,14 +75,11 @@ object SocSim extends App {
 
   val sc = SimConfig
   sc.normalOptimisation
-//  sc.withIVerilog
   sc.withFstWave
   sc.withConfig(SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = ASYNC)).includeSimulation)
-//  sc.addSimulatorFlag("--threads 1")
-//  sc.addSimulatorFlag("--prof-exec")
 
   // Tweek the toplevel a bit
-  class SocDemoSim(cpuCount : Int) extends SocDemo(cpuCount, withL2 = withL2, asic = asic, xlen = xlen){
+  class SocDemoSim(cpuCount : Int) extends SocDemo(cpuCount, asic = asic, xlen = xlen){
     setDefinitionName("SocDemo")
     // You can for instance override cache parameters of the CPU caches like that :
     naxes.flatMap(_.plugins).foreach{
@@ -93,8 +88,6 @@ object SocSim extends App {
       case _ =>
     }
 
-    // l2.cache.parameter.cacheBytes = 4096
-
     // Here we add a scope peripheral, which can count the number of cycle that a given signal is high
     // See ext/NaxSoftware/baremetal/socdemo for software usages
     val scope = new ScopeFiber(){
@@ -102,27 +95,11 @@ object SocSim extends App {
       lock.retain()
 
       val filler = Fiber build new Area {
-        if (withL2) {
-          val l2c = l2.cache.logic.cache
-          add(l2c.events.acquire.hit, 0xF00) //acquire is used by data cache
-          add(l2c.events.acquire.miss, 0xF04)
-          add(l2c.events.getPut.hit, 0xF20) //getPut is used by instruction cache refill and DMA
-          add(l2c.events.getPut.miss, 0xF24)
-        }
         for ((nax, i) <- naxes.zipWithIndex) nax.plugins.foreach {
           case p: FetchCachePlugin => add(p.logic.refill.fire, i * 0x80 + 0x000)
           case p: DataCachePlugin => {
             add(p.logic.cache.refill.push.fire, i * 0x80 + 0x010)
             add(p.logic.cache.writeback.push.fire, i * 0x80 + 0x014)
-            if (withL2) {
-              val l2c = l2.cache.logic.cache
-              l2c.rework{
-                //For each core, generate a L2 d$ miss probe
-                val masterSpec = l2c.p.unp.m.masters.find(_.name == p).get
-                val masterHit = masterSpec.sourceHit(l2c.ctrl.processStage(l2c.CTRL_CMD).source)
-                add((masterHit && l2c.events.acquire.miss).setCompositeName(l2c.events.acquire.miss, s"nax_$i"), i * 0x80 + 0x40)
-              }
-            }
           }
           case _ =>
         }
