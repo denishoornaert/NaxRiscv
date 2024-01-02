@@ -4,7 +4,7 @@
 
 [submodule "ext/NaxSoftware"]
 	path = ext/NaxSoftware
-	url = https://github.com/SpinalHDL/NaxSoftware.git
+	url = https://github.com/denishoornaert/NaxSoftware.git
 [submodule "ext/riscv-isa-sim"]
 	path = ext/riscv-isa-sim
 	url = https://github.com/SpinalHDL/riscv-isa-sim.git
