@@ -19,9 +19,9 @@ import spinal.lib.misc.plic.TilelinkPlicFiber
 import spinal.lib.system.tag.PMA
 
 // SocDemo is a little SoC made only for simulation purposes.
-class SocDemo(cpuCount : Int, asic : Boolean = false, xlen : Int = 32) extends Component {
+class SocDemo(cpuCount : Int, coreMaxTransactions : Int = 2, asic : Boolean = false, xlen : Int = 32) extends Component {
   // Create a few NaxRiscv cpu
-  val naxes = for(hartId <- 0 until cpuCount) yield new TilelinkNaxRiscvFiber().setCoherentConfig(hartId, asic = asic, xlen = xlen)
+  val naxes = for(hartId <- 0 until cpuCount) yield new TilelinkNaxRiscvFiber().setCoherentConfig(hartId, asic = asic, xlen = xlen, coreMaxTransactions = coreMaxTransactions)
 
   // As NaxRiscv may emit memory request to some unmapped memory space, we need to catch those with TransactionFilter
   val memFilter, ioFilter = new fabric.TransferFilter()
@@ -32,6 +32,7 @@ class SocDemo(cpuCount : Int, asic : Boolean = false, xlen : Int = 32) extends C
 
   // Creates tilelink Hub to connect cores
   val hub = new HubFiber()
+  hub.parameter.downPendingMax = cpuCount*coreMaxTransactions*2 // TODO: check if read and write accounted similarly in thr hub?
   hub.up << memFilter.down
   hub.up.setUpConnection(a = StreamPipe.FULL, c = StreamPipe.FULL)
   hub.down.forceDataWidth(64) // TODO: better way to set the width? Getting value from cores' bus?
