@@ -36,6 +36,7 @@ case class FetchL1Rsp(dataWidth : Int) extends Bundle{
 
 case class FetchL1BusParameters(physicalWidth : Int,
                                 dataWidth : Int,
+                                prioWidth : Int,
                                 lineSize : Int,
                                 withBackPresure : Boolean){
   def toTileLinkM2sParameters(name : Nameable) = tilelink.M2sParameters(
@@ -43,6 +44,7 @@ case class FetchL1BusParameters(physicalWidth : Int,
     support = M2sSupport(
       addressWidth = physicalWidth,
       dataWidth = dataWidth,
+      prioWidth = prioWidth,
       transfers = tilelink.M2sTransfers(get = SizeRange(lineSize))
     )
   )
@@ -172,6 +174,7 @@ case class FetchL1Bus(p : FetchL1BusParameters) extends Bundle with IMasterSlave
     bus.a.source  := 0
     bus.a.address := cmd.address
     bus.a.size    := log2Up(lineSize)
+    bus.a.prio    := 2
     cmd.ready := bus.a.ready
 
     rsp.valid := bus.d.valid
@@ -214,6 +217,7 @@ case class FetchBypassSpec(stageId : Int) extends Area{
 class FetchCachePlugin(var cacheSize : Int,
                        var wayCount : Int,
                        var memDataWidth : Int,
+                       var prioWidth : Int,
                        var fetchDataWidth : Int,
                        var translationStorageParameter : Any,
                        var translationPortParameter : Any,
@@ -239,6 +243,7 @@ class FetchCachePlugin(var cacheSize : Int,
   def getBusParameter() = FetchL1BusParameters(
     physicalWidth = PHYSICAL_WIDTH,
     dataWidth     = memDataWidth,
+    prioWidth     = prioWidth,
     lineSize      = lineSize,
     withBackPresure = false
   )

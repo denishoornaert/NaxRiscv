@@ -67,6 +67,7 @@ object Lsu2Plugin extends AreaObject {
 
 class Lsu2Plugin(var lqSize: Int,
                  var sqSize : Int,
+                 var prioWidth : Int,
                  var translationStorageParameter : Any,
                  var sharedTranslationParameter : Any,
                  var sharedAguAt  : Int = 0,
@@ -257,7 +258,7 @@ class Lsu2Plugin(var lqSize: Int,
     doc.property("RVA", true)
   }
 
-  def getPeripheralBusParameters() = LsuPeripheralBusParameter(PHYSICAL_WIDTH, wordWidth)
+  def getPeripheralBusParameters() = LsuPeripheralBusParameter(PHYSICAL_WIDTH, wordWidth, prioWidth)
   val peripheralBus = create late Verilator.public(master(LsuPeripheralBus(getPeripheralBusParameters())).setName("LsuPlugin_peripheralBus"))
 
 

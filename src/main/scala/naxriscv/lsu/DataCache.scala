@@ -106,6 +106,7 @@ case class DataStoreRsp(addressWidth : Int, refillCount : Int) extends Bundle {
 
 case class DataMemBusParameter( addressWidth: Int,
                                 dataWidth: Int,
+                                prioWidth: Int,
                                 readIdCount : Int,
                                 writeIdCount : Int,
                                 probeIdWidth : Int,
@@ -156,6 +157,7 @@ case class DataMemBusParameter( addressWidth: Int,
     tilelink.M2sParameters(
       addressWidth = addressWidth,
       dataWidth = dataWidth,
+      prioWidth = prioWidth,
       masters = masters
     )
   }
@@ -478,6 +480,7 @@ case class DataMemBus(p : DataMemBusParameter) extends Bundle with IMasterSlave 
       BusParameter(
         addressWidth = m2s.addressWidth,
         dataWidth    = m2s.dataWidth,
+        prioWidth    = m2s.prioWidth,
         sizeBytes    = m2s.sizeBytes,
         sourceWidth  = m2s.sourceWidth,
         sinkWidth    = p.ackIdWidth,
@@ -508,11 +511,13 @@ case class DataMemBus(p : DataMemBusParameter) extends Bundle with IMasterSlave 
           bus.a.opcode := tilelink.Opcode.A.GET()
           bus.a.source := read.cmd.id.resized
           bus.a.address := read.cmd.address
+          bus.a.prio := 3
         } otherwise {
           bus.a.valid := write.cmd.valid
           bus.a.opcode := tilelink.Opcode.A.PUT_FULL_DATA()
           bus.a.source := write.cmd.id.resized
           bus.a.address := write.cmd.address
+          bus.a.prio := 3
         }
 
         val beat = bus.a.beatCounter()
@@ -547,6 +552,7 @@ case class DataMemBus(p : DataMemBusParameter) extends Bundle with IMasterSlave 
         bus.a.param   := tilelink.Param.Grow(read.cmd.data, read.cmd.unique)
         bus.a.source  := read.cmd.id.resized
         bus.a.address := read.cmd.address
+        bus.a.prio    := 3
         bus.a.size    := log2Up(p.lineSize)
       }
 
@@ -652,6 +658,7 @@ case class DataCacheParameters(cacheSize: Int,
                                writebackCount : Int,
                                memDataWidth: Int,
                                cpuDataWidth: Int,
+                               prioWidth: Int,
                                preTranslationWidth: Int,
                                postTranslationWidth: Int,
                                withCoherency : Boolean = false,
@@ -680,6 +687,7 @@ case class DataCacheParameters(cacheSize: Int,
   def memParameter = DataMemBusParameter(
     addressWidth  = postTranslationWidth,
     dataWidth     = memDataWidth,
+    prioWidth     = prioWidth,
     readIdCount   = refillCount,
     writeIdCount  = writebackCount,
     probeIdWidth  = probeIdWidth,

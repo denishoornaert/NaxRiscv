@@ -69,6 +69,7 @@ class SocDemo(cpuCount : Int, withL2 : Boolean = true, asic : Boolean = false, x
       M2sSupport(
         addressWidth = 28,
         dataWidth = 32,
+        prioWidth = 0,
         transfers = M2sTransfers(
           get = SizeRange(4),
           putFull = SizeRange(4)

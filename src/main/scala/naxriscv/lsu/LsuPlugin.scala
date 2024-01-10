@@ -102,13 +102,15 @@ case class LsuStorePort(sqSize : Int,
 }
 
 case class LsuPeripheralBusParameter(addressWidth : Int,
-                                     dataWidth : Int){
+                                     dataWidth : Int,
+                                     prioWidth : Int){
   val bytesMax = dataWidth/8
   def toTileLinkM2sParameters() = tilelink.M2sParameters(
     sourceCount = 1,
     support = M2sSupport(
       addressWidth = addressWidth,
       dataWidth = dataWidth,
+      prioWidth = prioWidth,
       transfers = tilelink.M2sTransfers(
         get = SizeRange.upTo(bytesMax),
         putFull = SizeRange.upTo(bytesMax)
@@ -131,7 +133,7 @@ case class LsuPeripheralBusRsp(p : LsuPeripheralBusParameter) extends Bundle{
 }
 
 object LsuPeripheralBus{
-  def apply(addressWidth : Int, dataWidth : Int) : LsuPeripheralBus = LsuPeripheralBus(LsuPeripheralBusParameter(addressWidth,dataWidth))
+  def apply(addressWidth : Int, dataWidth : Int, prioWidth : Int) : LsuPeripheralBus = LsuPeripheralBus(LsuPeripheralBusParameter(addressWidth,dataWidth,prioWidth))
 }
 
 case class LsuPeripheralBus(p : LsuPeripheralBusParameter) extends Bundle with IMasterSlave {
@@ -271,6 +273,7 @@ case class LsuPeripheralBus(p : LsuPeripheralBusParameter) extends Bundle with I
     bus.a.mask    := cmd.mask
     bus.a.data    := cmd.data
     bus.a.corrupt := False
+    bus.a.prio    := 1
     cmd.ready := bus.a.ready
 
     rsp.valid := bus.d.valid
@@ -292,6 +295,7 @@ trait LsuFlusher extends Service{
 
 class LsuPlugin(var lqSize: Int,
                 var sqSize : Int,
+                var prioWidth : Int,
                 var translationStorageParameter : Any,
                 var loadTranslationParameter : Any,
                 var storeTranslationParameter : Any,
@@ -328,7 +332,7 @@ class LsuPlugin(var lqSize: Int,
   override def postCommitBusy = setup.postCommitBusy
   override def getFlushPort() : FlowCmdRsp[LsuFlushPayload, NoData]= setup.flushPort
 
-  val peripheralBus = create late master(LsuPeripheralBus(PHYSICAL_WIDTH, wordWidth))
+  val peripheralBus = create late master(LsuPeripheralBus(PHYSICAL_WIDTH, wordWidth, prioWidth))
   
 
   case class StorePortSpec(port : Flow[LsuStorePort])

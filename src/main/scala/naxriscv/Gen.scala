@@ -65,6 +65,7 @@ object Config{
               sqSize : Int = 16,
               dataCacheRefillCount : Int = 2,
               dataCacheWritebackCount : Int = 2,
+              prioWidth : Int = 0,
               simulation : Boolean = GenerationFlags.simulation,
               sideChannels : Boolean = false,
               dispatchSlots : Int = 32,
@@ -109,6 +110,7 @@ object Config{
       injectionAt = 2,
       fetchDataWidth = 64,
       memDataWidth = 64,
+      prioWidth = prioWidth,
       reducedBankWidth = false,
       hitsWithTranslationWays = true,
       tagsReadAsync = withDistributedRam,
@@ -188,6 +190,7 @@ object Config{
         case false => plugins += new LsuPlugin(
           lqSize = lqSize,
           sqSize = sqSize,
+          prioWidth = prioWidth,
           loadToCacheBypass = true,
           lqToCachePipelined = true,
           hitPedictionEntries = 1024,
@@ -230,6 +233,7 @@ object Config{
         case true => plugins += new Lsu2Plugin(
           lqSize = lqSize,
           sqSize = sqSize,
+          prioWidth = prioWidth,
 //          loadToCacheBypass = true,
           lqToCachePipelined = true,
 //          hitPedictionEntries = 1024,
@@ -264,6 +268,7 @@ object Config{
 
       plugins += new DataCachePlugin(
         memDataWidth = 64,
+        prioWidth = prioWidth,
         cacheSize = 4096 * 4,
         wayCount = 4,
         refillCount = dataCacheRefillCount,
