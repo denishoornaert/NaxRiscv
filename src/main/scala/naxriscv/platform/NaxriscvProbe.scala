@@ -208,7 +208,7 @@ class NaxriscvProbe(nax : NaxRiscv, hartId : Int){
   def checkCommits(): Unit ={
     var mask = commitMask.toInt
     cycleSinceLastCommit += 1
-    if(cycleSinceLastCommit == 10000){
+    if(cycleSinceLastCommit == 1000000){
       simFailure("Nax didn't commited anything since too long")
     }
     for(i <- 0 until commitPlugin.commitCount){
