@@ -266,6 +266,9 @@ class Lsu2Plugin(var lqSize: Int,
     val imp = setup.get
     import imp._
 
+    val csr = getService[CsrService]
+    val busPrio = Reg(UInt(prioWidth bits)) init(UInt(prioWidth bits).setAll())
+    csr.readWrite(busPrio, 0xBC8)
 
     val keysLocal = new AreaRoot {
       val LOAD_CACHE_RSP = Stageable(cloneOf(setup.cacheLoad.rsp))
@@ -1624,6 +1627,7 @@ class Lsu2Plugin(var lqSize: Int,
       peripheralBus.cmd.valid   := enabled && !cmdSent && isIo
       peripheralBus.cmd.write   := isStore
       peripheralBus.cmd.address := address
+      peripheralBus.cmd.prio    := busPrio
       peripheralBus.cmd.size    := isStore ? storeSize otherwise loadSize
       peripheralBus.cmd.data    := storeData
       peripheralBus.cmd.mask    := storeMask

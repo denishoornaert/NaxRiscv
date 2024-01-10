@@ -123,6 +123,7 @@ case class LsuPeripheralBusCmd(p : LsuPeripheralBusParameter) extends Bundle{
   val write = Bool()
   val address = UInt(p.addressWidth bits)
   val data = Bits(p.dataWidth bits)
+  val prio = UInt(p.prioWidth bits)
   val mask = Bits(p.dataWidth / 8 bit)
   val size = UInt(log2Up(log2Up(p.dataWidth/8)+1) bits)
 }
@@ -165,6 +166,7 @@ case class LsuPeripheralBus(p : LsuPeripheralBusParameter) extends Bundle with I
       ret.cmd.write := cmd.write
       ret.cmd.address := addressAdd(cmd.address, counter << log2Up(width/8))
       ret.cmd.data := cmd.data.subdivideIn(ratio slices).read(cmdSel)
+      ret.cmd.prio := cmd.prio
       ret.cmd.mask := cmd.mask.subdivideIn(ratio slices).read(cmdSel)
       ret.cmd.size := cmd.size.min(sizeMax)
       cmd.ready := ret.cmd.ready && counter === beats
@@ -253,6 +255,7 @@ case class LsuPeripheralBus(p : LsuPeripheralBusParameter) extends Bundle with I
     bmb.cmd.address := cmd.address
     bmb.cmd.length := ((U(1) << cmd.size)-1).resized
     bmb.cmd.data := cmd.data
+    // TODO is this needed?: bmb.cmd.prio := cmd.prio
     bmb.cmd.mask := cmd.mask
     bmb.cmd.last := True
 
@@ -273,7 +276,7 @@ case class LsuPeripheralBus(p : LsuPeripheralBusParameter) extends Bundle with I
     bus.a.mask    := cmd.mask
     bus.a.data    := cmd.data
     bus.a.corrupt := False
-    bus.a.prio    := 1
+    bus.a.prio    := cmd.prio
     cmd.ready := bus.a.ready
 
     rsp.valid := bus.d.valid
@@ -448,6 +451,10 @@ class LsuPlugin(var lqSize: Int,
     lock.await()
 
     def getStoreRfWakeLatency(p : Flow[WakeRegFile]) : Int = (p.rfLatency max 0)+(p.withRfBypass && !storeReadRfWithBypass).toInt-1 max 0
+
+    val csr = getService[CsrService]
+    val busPrio = Reg(UInt(prioWidth bits)) init(UInt(prioWidth bits).setAll())
+    csr.readWrite(busPrio, 0xBC8)
 
     val keysLocal = new AreaRoot {
       val LQ_ID = Stageable(UInt(log2Up(lqSize) bits))
@@ -1698,6 +1705,7 @@ class LsuPlugin(var lqSize: Int,
           setup.cacheStore.cmd.mask :=  AddressToMask(setup.cacheStore.cmd.address, size, widthOf(setup.cacheStore.cmd.mask))
           setup.cacheStore.cmd.generation := generation
           setup.cacheStore.cmd.data.assignDontCare()
+          setup.cacheStore.cmd.prio := busPrio
           setup.cacheStore.cmd.io := io
           setup.cacheStore.cmd.prefetch := False
           switch(size){
@@ -1878,6 +1886,7 @@ class LsuPlugin(var lqSize: Int,
       peripheralBus.cmd.valid   := enabled && !cmdSent && isIo
       peripheralBus.cmd.write   := isStore
       peripheralBus.cmd.address := address
+      peripheralBus.cmd.prio    := busPrio
       peripheralBus.cmd.size    := isStore ? storeSize otherwise loadSize
       peripheralBus.cmd.data    := storeData
       peripheralBus.cmd.mask    := storeMask

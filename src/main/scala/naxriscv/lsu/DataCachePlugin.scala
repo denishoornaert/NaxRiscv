@@ -6,7 +6,7 @@ package naxriscv.lsu
 
 import naxriscv.Global
 import naxriscv.Global.{FLEN, PHYSICAL_WIDTH, VIRTUAL_EXT_WIDTH, XLEN}
-import naxriscv.interfaces.{AddressTranslationService, LockedImpl, PerformanceCounterService}
+import naxriscv.interfaces.{AddressTranslationService, LockedImpl, PerformanceCounterService, CsrService}
 import spinal.core._
 import spinal.lib._
 import naxriscv.utilities.{DocPlugin, Plugin}
@@ -75,6 +75,7 @@ class DataCachePlugin(var memDataWidth : Int,
         preTranslationWidth  = VIRTUAL_EXT_WIDTH,
         postTranslationWidth = PHYSICAL_WIDTH,
         dataWidth     = cpuDataWidth,
+        prioWidth     = prioWidth,
         refillCount   = refillCount,
         rspAt         = loadRspAt,
         translatedAt  = loadTranslatedAt
@@ -89,6 +90,7 @@ class DataCachePlugin(var memDataWidth : Int,
     storePorts.addRet(StorePortSpec(DataStorePort(
       postTranslationWidth = PHYSICAL_WIDTH,
       dataWidth     = cpuDataWidth,
+      prioWidth     = prioWidth,
       refillCount   = refillCount
     ))).port
   }
@@ -153,10 +155,14 @@ class DataCachePlugin(var memDataWidth : Int,
   val logic = create late new Area{
     lock.await()
 
-
     val cache = new DataCache(
       setup.dataCacheParameters
     )
+
+    val csr = getService[CsrService]
+    val busPrio = Reg(UInt(prioWidth bits)) init(UInt(prioWidth bits).setAll())
+    csr.readWrite(busPrio, 0xBC0)
+    cache.io.busPrio := busPrio
 
     setup.writebackBusy <> cache.io.writebackBusy
     setup.lockPort <> cache.io.lock
@@ -176,7 +182,6 @@ class DataCachePlugin(var memDataWidth : Int,
       cache.io.load.cmd.valid := hit
       cache.io.load.cmd.payload := OhMux(oh, sorted.map(_.port.cmd.payload))
       (sorted, oh.asBools).zipped.foreach(_.port.cmd.ready := _ )
-
       cache.io.load.cancels := sorted.map(_.port.cancels).reduceBalancedTree(_ | _)
       cache.io.load.translated := OhMux(ohHistory(loadTranslatedAt), sorted.map(_.port.translated))
 

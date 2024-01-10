@@ -6,7 +6,7 @@ package naxriscv.fetch
 
 import naxriscv.{Fetch, Global}
 import naxriscv.Global._
-import naxriscv.interfaces.{AddressTranslationPortUsage, AddressTranslationService, JumpService, PerformanceCounterService}
+import naxriscv.interfaces.{AddressTranslationPortUsage, AddressTranslationService, JumpService, PerformanceCounterService, CsrService}
 import naxriscv.utilities._
 import spinal.core._
 import spinal.lib._
@@ -23,8 +23,9 @@ import spinal.lib.misc.Plru
 
 import scala.collection.mutable.ArrayBuffer
 
-case class FetchL1Cmd(physicalWidth : Int) extends Bundle{
+case class FetchL1Cmd(physicalWidth : Int, prioWidth: Int) extends Bundle{
   val address = UInt(physicalWidth bits)
+  val prio    = UInt(prioWidth bits)
   val io      = Bool()
 }
 
@@ -53,7 +54,7 @@ case class FetchL1BusParameters(physicalWidth : Int,
 case class FetchL1Bus(p : FetchL1BusParameters) extends Bundle with IMasterSlave {
   import p._
 
-  val cmd = Stream(FetchL1Cmd(physicalWidth))
+  val cmd = Stream(FetchL1Cmd(physicalWidth, prioWidth))
   val rsp = Stream(FetchL1Rsp(dataWidth))
 
   def beatCount = lineSize*8/dataWidth
@@ -174,7 +175,7 @@ case class FetchL1Bus(p : FetchL1BusParameters) extends Bundle with IMasterSlave
     bus.a.source  := 0
     bus.a.address := cmd.address
     bus.a.size    := log2Up(lineSize)
-    bus.a.prio    := 2
+    bus.a.prio    := cmd.prio
     cmd.ready := bus.a.ready
 
     rsp.valid := bus.d.valid
@@ -313,6 +314,10 @@ class FetchCachePlugin(var cacheSize : Int,
     val controlStage = setup.pipeline.getStage(controlAt)
     val injectionStage = setup.pipeline.getStage(injectionAt)
 
+    val csr = getService[CsrService]
+    val busPrio = Reg(UInt(prioWidth bits)) init(UInt(prioWidth bits).setAll())
+    csr.readWrite(busPrio, 0xBC4)
+
     val translationPort = translation.newTranslationPort(
       stages = fetch.pipeline.stages,
       preAddress  = FETCH_PC,
@@ -439,6 +444,7 @@ class FetchCachePlugin(var cacheSize : Int,
       val cmdSent = RegInit(False) setWhen (mem.cmd.fire) clearWhen (fire)
       mem.cmd.valid := valid && !cmdSent
       mem.cmd.address := address(tagRange.high downto lineRange.low) @@ U(0, lineRange.low bit)
+      mem.cmd.prio := busPrio
       mem.cmd.io := isIo
 
       val randomWay = Counter(wayCount, !valid)

@@ -31,10 +31,11 @@ case class LockPort() extends Bundle with IMasterSlave {
 case class DataLoadPort(preTranslationWidth : Int,
                         postTranslationWidth : Int,
                         dataWidth : Int,
+                        prioWidth : Int,
                         refillCount : Int,
                         rspAt : Int,
                         translatedAt : Int) extends Bundle with IMasterSlave {
-  val cmd = Stream(DataLoadCmd(preTranslationWidth, dataWidth))
+  val cmd = Stream(DataLoadCmd(preTranslationWidth, dataWidth, prioWidth))
   val translated = DataLoadTranslated(postTranslationWidth)
   val cancels = Bits(rspAt+1 bits)
   val rsp = Flow(DataLoadRsp(dataWidth, refillCount)) //The rsp.valid is fondamentaly necessary, as it has a fixed latency
@@ -47,9 +48,10 @@ case class DataLoadPort(preTranslationWidth : Int,
   }
 }
 
-case class DataLoadCmd(preTranslationWidth : Int, dataWidth : Int) extends Bundle {
+case class DataLoadCmd(preTranslationWidth : Int, dataWidth : Int, prioWidth : Int) extends Bundle {
   val virtual = UInt(preTranslationWidth bits)
   val size = UInt(log2Up(log2Up(dataWidth/8)+1) bits)
+  val prio = UInt(prioWidth bits)
   val redoOnDataHazard = Bool() //Usefull for access not protected by the LSU (ex MMU refill)
   val unlocked = Bool()
   val unique = Bool()  //Used by atomic to ensure that the line is owned in a coherent unique state
@@ -70,8 +72,9 @@ case class DataLoadRsp(dataWidth : Int, refillCount : Int) extends Bundle {
 
 case class DataStorePort(postTranslationWidth: Int,
                          dataWidth: Int,
-                         refillCount : Int) extends Bundle with IMasterSlave {
-  val cmd = Stream(DataStoreCmd(postTranslationWidth, dataWidth))
+                         refillCount : Int,
+                         prioWidth : Int) extends Bundle with IMasterSlave {
+  val cmd = Stream(DataStoreCmd(postTranslationWidth, dataWidth, prioWidth))
   val rsp = Flow(DataStoreRsp(postTranslationWidth, refillCount))
 
   override def asMaster() = {
@@ -80,9 +83,11 @@ case class DataStorePort(postTranslationWidth: Int,
   }
 }
 case class DataStoreCmd(postTranslationWidth: Int,
-                        dataWidth: Int) extends Bundle {
+                        dataWidth: Int,
+                        prioWidth: Int) extends Bundle {
   val address = UInt(postTranslationWidth bits)
   val data = Bits(dataWidth bits)
+  val prio = UInt(prioWidth bits)
   val mask = Bits(dataWidth/8 bits)
   val generation = Bool()
   val io = Bool()
@@ -166,6 +171,7 @@ case class DataMemBusParameter( addressWidth: Int,
 case class DataMemReadCmd(p : DataMemBusParameter) extends Bundle {
   val id = UInt(p.readIdWidth bits)
   val address = UInt(p.addressWidth bits)
+  val prio = UInt(p.prioWidth bits)
   val unique = p.withCoherency generate Bool()
   val data = p.withCoherency generate Bool()
 }
@@ -249,6 +255,7 @@ case class DataMemReadBus(p : DataMemBusParameter) extends Bundle with IMasterSl
 case class DataMemWriteCmd(p : DataMemBusParameter) extends Bundle {
   val address = UInt(p.addressWidth bits)
   val data    = Bits(p.dataWidth bits)
+  val prio    = UInt(p.prioWidth bits)
   val id      = UInt(p.writeIdWidth bits)
   val coherent = p.withCoherency generate new Bundle{
     val release = Bool() //else from probe
@@ -511,13 +518,13 @@ case class DataMemBus(p : DataMemBusParameter) extends Bundle with IMasterSlave 
           bus.a.opcode := tilelink.Opcode.A.GET()
           bus.a.source := read.cmd.id.resized
           bus.a.address := read.cmd.address
-          bus.a.prio := 3
+          bus.a.prio := read.cmd.prio
         } otherwise {
           bus.a.valid := write.cmd.valid
           bus.a.opcode := tilelink.Opcode.A.PUT_FULL_DATA()
           bus.a.source := write.cmd.id.resized
           bus.a.address := write.cmd.address
-          bus.a.prio := 3
+          bus.a.prio := write.cmd.prio
         }
 
         val beat = bus.a.beatCounter()
@@ -552,7 +559,7 @@ case class DataMemBus(p : DataMemBusParameter) extends Bundle with IMasterSlave 
         bus.a.param   := tilelink.Param.Grow(read.cmd.data, read.cmd.unique)
         bus.a.source  := read.cmd.id.resized
         bus.a.address := read.cmd.address
-        bus.a.prio    := 3
+        bus.a.prio    := read.cmd.prio
         bus.a.size    := log2Up(p.lineSize)
       }
 
@@ -709,6 +716,7 @@ class DataCache(val p : DataCacheParameters) extends Component {
       preTranslationWidth  = preTranslationWidth,
       postTranslationWidth = postTranslationWidth,
       dataWidth     = cpuDataWidth,
+      prioWidth     = prioWidth,
       refillCount   = refillCount,
       rspAt         = loadRspAt,
       translatedAt  = loadTranslatedAt
@@ -716,9 +724,11 @@ class DataCache(val p : DataCacheParameters) extends Component {
     val store = slave(DataStorePort(
       postTranslationWidth = postTranslationWidth,
       dataWidth     = cpuDataWidth,
+      prioWidth     = prioWidth,
       refillCount =  refillCount
     ))
     val mem = master(DataMemBus(memParameter))
+    val busPrio = in UInt(p.prioWidth bits)
     val refillCompletions = out Bits(refillCount bits)
     val refillEvent = out Bool()
     val writebackEvent = out Bool()
@@ -996,6 +1006,7 @@ class DataCache(val p : DataCacheParameters) extends Component {
       io.mem.read.cmd.valid := arbiter.hit && !writebackHazard
       io.mem.read.cmd.id := arbiter.sel
       io.mem.read.cmd.address := cmdAddress
+      io.mem.read.cmd.prio := io.busPrio
       if(withCoherency) {
         io.mem.read.cmd.unique := slots.map(_.unique).read(arbiter.sel)
         io.mem.read.cmd.data := slots.map(_.data).read(arbiter.sel)
@@ -1266,6 +1277,7 @@ class DataCache(val p : DataCacheParameters) extends Component {
       val word = victimBuffer.readSync(bufferRead.id @@ wordIndex, bufferRead.ready)
       io.mem.write.cmd.arbitrationFrom(cmd)
       io.mem.write.cmd.address := cmd.address
+      io.mem.write.cmd.prio := io.busPrio
       io.mem.write.cmd.data := word
       io.mem.write.cmd.id := cmd.id
       io.mem.write.cmd.last := cmd.last
