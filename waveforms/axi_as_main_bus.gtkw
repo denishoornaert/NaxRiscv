@@ -1,0 +1,198 @@
+[*]
+[*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
+[*] Fri Jan 12 17:19:51 2024
+[*]
+[dumpfile] "/home/denishoornaert/github/NaxRiscv/simWorkspace/SocDemo/test.fst"
+[dumpfile_mtime] "Fri Jan 12 17:08:12 2024"
+[dumpfile_size] 373781548
+[savefile] "/home/denishoornaert/github/NaxRiscv/axi_as_main_bus.gtkw"
+[timestart] 1194400000
+[size] 1920 1011
+[pos] -101 -101
+*-26.009241 1337730000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] TOP.
+[treeopen] TOP.SocDemo.
+[treeopen] TOP.SocDemo.memFilter_up_arbiter_core.
+[treeopen] TOP.SocDemo.naxes_0_thread_core.DataCachePlugin_logic_cache.
+[treeopen] TOP.SocDemo.naxes_1_thread_core.DataCachePlugin_logic_cache.
+[treeopen] TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.
+[sst_width] 345
+[signals_width] 378
+[sst_expanded] 1
+[sst_vpaned_height] 409
+@28
+TOP.SocDemo.clk
+TOP.SocDemo.reset
+@200
+-
+@28
+TOP.SocDemo.bridge_down_ar_valid
+TOP.SocDemo.bridge_down_ar_ready
+@22
+TOP.SocDemo.bridge_down_ar_payload_addr[30:0]
+@28
+TOP.SocDemo.bridge_down_ar_payload_burst[1:0]
+@22
+TOP.SocDemo.bridge_down_ar_payload_len[7:0]
+@28
+TOP.SocDemo.bridge_down_ar_payload_size[2:0]
+@200
+-
+@28
+TOP.SocDemo.bridge_down_r_valid
+TOP.SocDemo.bridge_down_r_ready
+@22
+TOP.SocDemo.bridge_down_r_payload_data[63:0]
+@28
+TOP.SocDemo.bridge_down_r_payload_last
+TOP.SocDemo.bridge_down_r_payload_resp[1:0]
+@200
+-
+@28
+TOP.SocDemo.bridge_down_aw_valid
+TOP.SocDemo.bridge_down_aw_ready
+@22
+TOP.SocDemo.bridge_down_aw_payload_addr[30:0]
+@28
+TOP.SocDemo.bridge_down_aw_payload_allStrb
+TOP.SocDemo.bridge_down_aw_payload_burst[1:0]
+@22
+TOP.SocDemo.bridge_down_aw_payload_len[7:0]
+@28
+TOP.SocDemo.bridge_down_aw_payload_size[2:0]
+@200
+-
+@28
+TOP.SocDemo.bridge_down_b_valid
+TOP.SocDemo.bridge_down_b_ready
+TOP.SocDemo.bridge_down_b_payload_resp[1:0]
+@200
+-
+@28
+TOP.SocDemo.bridge_down_w_valid
+TOP.SocDemo.bridge_down_w_ready
+@22
+TOP.SocDemo.bridge_down_w_payload_data[63:0]
+@28
+TOP.SocDemo.bridge_down_w_payload_last
+@22
+TOP.SocDemo.bridge_down_w_payload_strb[7:0]
+@200
+-
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_0_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_0_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_0_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_1_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_1_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_1_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_2_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_2_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_2_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_3_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_3_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_3_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_4_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_4_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_4_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_5_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_5_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_5_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_6_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_6_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_6_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_7_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_7_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_7_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_8_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_8_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_8_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_9_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_9_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_9_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_10_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_10_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_10_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_11_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_11_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_11_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_12_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_12_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_12_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_13_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_13_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_13_a_valid
+@22
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_14_a_payload_address[31:0]
+@28
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_14_a_ready
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_14_a_valid
+@22
+[color] 6
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_15_a_payload_address[31:0]
+@28
+[color] 6
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_15_a_ready
+[color] 6
+TOP.SocDemo.memFilter_up_arbiter_core.io_ups_15_a_valid
+@200
+-
+@22
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.refill_free[3:0]
+@28
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.io_load_cmd_valid
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.io_load_cmd_ready
+@22
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.io_load_cmd_payload_virtual[31:0]
+@28
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.io_load_rsp_valid
+@22
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.io_load_rsp_payload_data[31:0]
+@28
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.io_load_rsp_payload_redo
+@22
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.io_load_rsp_payload_refillSlot[3:0]
+@200
+-
+@23
+TOP.SocDemo.memFilter_up_arbiter_core.a_arbiter.io_chosenOH[15:0]
+@200
+-
+@22
+TOP.SocDemo.naxes_0_thread_core.DataCachePlugin_logic_cache.refill_read_readCounter[31:0]
+TOP.SocDemo.naxes_1_thread_core.DataCachePlugin_logic_cache.refill_read_readCounter[31:0]
+TOP.SocDemo.naxes_2_thread_core.DataCachePlugin_logic_cache.refill_read_readCounter[31:0]
+TOP.SocDemo.naxes_3_thread_core.DataCachePlugin_logic_cache.refill_read_readCounter[31:0]
+TOP.SocDemo.naxes_4_thread_core.DataCachePlugin_logic_cache.refill_read_readCounter[31:0]
+TOP.SocDemo.naxes_5_thread_core.DataCachePlugin_logic_cache.refill_read_readCounter[31:0]
+TOP.SocDemo.naxes_6_thread_core.DataCachePlugin_logic_cache.refill_read_readCounter[31:0]
+TOP.SocDemo.naxes_7_thread_core.DataCachePlugin_logic_cache.refill_read_readCounter[31:0]
+[pattern_trace] 1
+[pattern_trace] 0
