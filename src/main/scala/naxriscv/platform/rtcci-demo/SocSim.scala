@@ -81,6 +81,7 @@ object SocSim extends App {
   sc.normalOptimisation
   sc.withFstWave
   sc.withConfig(SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = ASYNC)).includeSimulation)
+  sc.addSimulatorFlag("--threads 24")
 
   // Tweek the toplevel a bit
   class SocDemoSim(cpuCount : Int) extends SocDemo(cpuCount, coreMaxTransactions, asic = asic, xlen = xlen){
