@@ -267,7 +267,7 @@ class Lsu2Plugin(var lqSize: Int,
     import imp._
 
     val csr = getService[CsrService]
-    val busPrio = Reg(UInt(prioWidth bits)) init(UInt(prioWidth bits).setAll())
+    val busPrio = Reg(UInt(prioWidth bits)) init(0) // init(UInt(prioWidth bits).setAll())
     csr.readWrite(busPrio, 0xBC8)
 
     val keysLocal = new AreaRoot {

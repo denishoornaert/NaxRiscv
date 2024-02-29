@@ -453,7 +453,7 @@ class LsuPlugin(var lqSize: Int,
     def getStoreRfWakeLatency(p : Flow[WakeRegFile]) : Int = (p.rfLatency max 0)+(p.withRfBypass && !storeReadRfWithBypass).toInt-1 max 0
 
     val csr = getService[CsrService]
-    val busPrio = Reg(UInt(prioWidth bits)) init(UInt(prioWidth bits).setAll())
+    val busPrio = Reg(UInt(prioWidth bits)) init(0) // init(UInt(prioWidth bits).setAll())
     csr.readWrite(busPrio, 0xBC8)
 
     val keysLocal = new AreaRoot {

@@ -1094,6 +1094,12 @@ class DataCache(val p : DataCacheParameters) extends Component {
       }
       io.mem.read.ack << buffer.haltWhen(counter =/= 3) //Give some time for the CPU to do forward progress
     }
+    val XXX_pending_transactions = Reg(UInt((log2Up(refillCount)+1) bits)) init(0)
+    XXX_pending_transactions := CountOne(B(slots.map(slot => slot.valid & !slot.cmdSent)))
+  
+    val XXX_in_flight_transactions = Reg(UInt((log2Up(refillCount)+1) bits)) init(0)
+    XXX_in_flight_transactions := CountOne(B(slots.map(slot => slot.valid & slot.cmdSent)))
+  
   }
 
   val writeback = new Area{
