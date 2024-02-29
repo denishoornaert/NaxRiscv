@@ -58,6 +58,8 @@ object SocSim extends App {
   var xlen = 32
   var coreMaxTransactions = 4
   var memoryResponseTime = 0
+  var downPendingMax = 4
+  var probeCount = 1
   val bins = ArrayBuffer[(Long, String)]()
   val elfs = ArrayBuffer[String]()
 
@@ -71,6 +73,8 @@ object SocSim extends App {
     opt[Int]("nax-count") action { (v, c) => naxCount = v }
     opt[Int]("core-max-trans") action { (v, c) => coreMaxTransactions = v }
     opt[Int]("mem-resp-time") action { (v, c) => memoryResponseTime = v }
+    opt[Int]("down-pending-max") action { (v, c) => downPendingMax = v }
+    opt[Int]("probe-count") action { (v, c) => probeCount = v }
     opt[Seq[String]]("load-bin") unbounded() action { (v, c) => bins += (lang.Long.parseLong(v(0), 16) -> v(1)) }
     opt[String]("load-elf") unbounded() action { (v, c) => elfs += v }
   }.parse(args, Unit).nonEmpty)
@@ -81,10 +85,10 @@ object SocSim extends App {
   sc.normalOptimisation
   sc.withFstWave
   sc.withConfig(SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = ASYNC)).includeSimulation)
-  sc.addSimulatorFlag("--threads 24")
+  sc.addSimulatorFlag("--threads 12") // was 24
 
   // Tweek the toplevel a bit
-  class SocDemoSim(cpuCount : Int) extends SocDemo(cpuCount, coreMaxTransactions, asic = asic, xlen = xlen){
+  class SocDemoSim(cpuCount : Int) extends SocDemo(cpuCount, coreMaxTransactions, downPendingMax, probeCount, asic = asic, xlen = xlen){
     setDefinitionName("SocDemo")
     // You can for instance override cache parameters of the CPU caches like that :
     naxes.flatMap(_.plugins).foreach{

@@ -22,7 +22,9 @@ import scala.util.Random
 case class Axi4MemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemorySimConfig) {
   val memory = SparseMemory()
   val pending_reads = new mutable.Queue[AxiJob]
+  val ready_reads = new mutable.Queue[Boolean]
   val pending_writes = new mutable.Queue[AxiJob]
+  val ready_writes = new mutable.Queue[Boolean]
   val threads = new mutable.Queue[SimThread]
 
   /** Bus word width in bytes */
@@ -119,6 +121,12 @@ case class Axi4MemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemo
       ar.ready #= false
       
       pending_reads += newAxiJob(ar.payload)
+      fork {
+        // Introduce static delay for each transaction
+        // NOTE: this is not a realistic form of response time...
+        clockDomain.waitSampling(config.readResponseDelay)
+        ready_reads += true
+      }
 
       //println("AXI4 read cmd: addr=0x" + ar.payload.addr.toLong.toHexString + " count=" + (ar.payload.len.toBigInt+1))
 
@@ -137,12 +145,9 @@ case class Axi4MemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemo
 
     while(true) {
 
-      if(pending_reads.nonEmpty) {
+      if(ready_reads.nonEmpty) {
         var job = pending_reads.front
 
-        // Introduce static delay for each transaction
-        // NOTE: this is not a realistic form of response time...
-        clockDomain.waitSampling(config.readResponseDelay)
         r.valid #= true
 
         var i = 0
@@ -168,6 +173,7 @@ case class Axi4MemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemo
         r.valid #= false
         setLast(r.payload,false)
 
+        ready_reads.dequeue()
         pending_reads.dequeue()
 
         //println("AXI4 read rsp: addr=0x" + job.address.toLong.toHexString + " count=" + (job.burstLength+1))
@@ -188,6 +194,12 @@ case class Axi4MemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemo
       aw.ready #= false
 
       pending_writes += newAxiJob(aw.payload)
+      fork {
+        // Introduce static delay for each transaction
+        // NOTE: this is not a realistic form of response time...
+        clockDomain.waitSampling(config.readResponseDelay)
+        ready_writes += true
+      }
 
       //println("AXI4 write cmd: addr=0x" + aw.payload.addr.toLong.toHexString + " count=" + (aw.payload.len.toBigInt+1))
 
@@ -205,7 +217,7 @@ case class Axi4MemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemo
     while(true) {
       clockDomain.waitSampling(10)
 
-      if(pending_writes.nonEmpty) {
+      if(ready_writes.nonEmpty) {
         var job = pending_writes.front
         var count = job.burstLength
        
@@ -218,9 +230,6 @@ case class Axi4MemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemo
 
         w.ready #= false
 
-        // Introduce static delay for each transaction
-        // NOTE: this is not a realistic form of response time...
-        clockDomain.waitSampling(config.writeResponseDelay)
 
         b.valid #= true
         if(b.config.useId)
@@ -230,6 +239,7 @@ case class Axi4MemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemo
         clockDomain.waitSamplingWhere(b.ready.toBoolean)
         b.valid #= false
 
+        ready_writes.dequeue()
         pending_writes.dequeue()
 
         //println("AXI4 write: addr=0x" + job.address.toLong.toHexString + " count=" + (job.burstLength+1))

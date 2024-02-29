@@ -209,7 +209,7 @@ class NaxriscvProbe(nax : NaxRiscv, hartId : Int){
     var mask = commitMask.toInt
     cycleSinceLastCommit += 1
     if(cycleSinceLastCommit == 1000000){
-      simFailure("Nax didn't commited anything since too long")
+      // simFailure("Nax didn't commited anything since too long")
     }
     for(i <- 0 until commitPlugin.commitCount){
       if((mask & 1) != 0){

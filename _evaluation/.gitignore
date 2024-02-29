@@ -1,0 +1,4 @@
+errors/
+old/
+*.py
+*.csv
