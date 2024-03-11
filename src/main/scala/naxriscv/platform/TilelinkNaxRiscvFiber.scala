@@ -52,7 +52,7 @@ class TilelinkNaxRiscvFiber() extends Area with RiscvHart{
     this.clint load clint
   }
 
-  def setCoherentConfig(hartId : Int, asic : Boolean = false, xlen : Int = 32, coreMaxTransactions : Int = 2, prioWidth : Int = 0) : this.type = {
+  def setCoherentConfig(hartId : Int, asic : Boolean = false, xlen : Int = 32, coreMaxTransactions : Int = 2, prioWidth : Int = 3) : this.type = {
     plugins load Config.plugins(
       withCoherency = true,
       withRdTime = false,

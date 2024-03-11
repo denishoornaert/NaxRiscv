@@ -7,6 +7,10 @@ package naxriscv.platform.litex
 import naxriscv.compatibility.{EnforceSyncRamPhase, MemReadDuringWritePatcherPhase, MultiPortWritesSymplifier}
 import naxriscv.execute.CsrTracer
 import naxriscv.misc.PrivilegedPlugin
+import naxriscv.lsu.DataCachePlugin
+import naxriscv.lsu.LsuPlugin
+import naxriscv.fetch.FetchCachePlugin
+import naxriscv.lsu2.Lsu2Plugin
 import naxriscv.utilities._
 import spinal.core._
 import spinal.lib.bus.misc.SizeMapping
@@ -47,6 +51,11 @@ object NaxGen extends App{
   var resetVector = 0l
   var xlen = 32
   var cpuCount = 1
+  
+  var coreMaxTransactions : Int = 2
+  var downPendingMax : Int = 4
+  var probeCount : Int = 1
+
   val files = ArrayBuffer[String]()
   val scalaArgs = ArrayBuffer[String]()
   val socConfig = new NaxSocConfig
@@ -64,6 +73,11 @@ object NaxGen extends App{
     opt[Long]("reset-vector") action  { (v, c) => resetVector = v }
     opt[Int]("xlen") action { (v, c) => xlen = v }
     opt[Int]("cpu-count") action { (v, c) => cpuCount = v }
+    
+    opt[Int]("core-max-trans") action { (v, c) => coreMaxTransactions = v }
+    opt[Int]("down-pending-max") action { (v, c) => downPendingMax = v }
+    opt[Int]("probe-count") action { (v, c) => probeCount = v }
+
     opt[Int]("litedram-width") action { (v, c) => mBusWidth = v }
     opt[Unit]("with-jtag-tap") action  { (v, c) => withJtagTap = true }
     opt[Unit]("with-jtag-instruction") action  { (v, c) => withJtagInstruction = true }
@@ -117,7 +131,18 @@ object NaxGen extends App{
     socConfig.naxPlugins = List.tabulate(cpuCount){ i =>
       val p = plugins
       p.foreach{
+        case dcp : DataCachePlugin => { 
+          dcp.refillCount = coreMaxTransactions
+          dcp.writebackCount = coreMaxTransactions
+        }
         case pp : PrivilegedPlugin => pp.p.hartId = i
+        case _ =>
+      }
+      p.foreach{
+        case plug : FetchCachePlugin => plug.prioWidth = log2Up(cpuCount)
+        case plug : LsuPlugin => plug.prioWidth = log2Up(cpuCount)
+        case plug : Lsu2Plugin => plug.prioWidth = log2Up(cpuCount)
+        case plug : DataCachePlugin => plug.prioWidth = log2Up(cpuCount)
         case _ =>
       }
       p :+ new CsrTracer

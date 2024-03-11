@@ -35,7 +35,7 @@ class NaxSocConfig(){
   def withL2 = l2Bytes > 0
 }
 
-class NaxSoc(c : NaxSocConfig) extends Component{
+class NaxSoc(c : NaxSocConfig, downPendingMax : Int = 4, probeCount : Int = 1) extends Component{
   import c._
 
   val socClk = in Bool()
@@ -92,9 +92,12 @@ class NaxSoc(c : NaxSocConfig) extends Component{
     var nonCoherent: Node = null
     val noL2 = !withL2 generate new Area {
       val hub = new HubFiber()
+      hub.parameter.downPendingMax = downPendingMax // TODO: check if downPendingMax is set
+      hub.parameter.probeCount = probeCount // TODO: check if probeCount is set
       hub.up << memFilter.down
-      hub.up.setUpConnection(a = StreamPipe.FULL, c = StreamPipe.FULL)
+      hub.up.setUpConnection(a = StreamPipe.NONE, c = StreamPipe.FULL) // TODO: maybe increases critical path?
       hub.down.forceDataWidth(mainDataWidth)
+
       nonCoherent = hub.down
     }
 

@@ -65,7 +65,7 @@ object Config{
               sqSize : Int = 16,
               dataCacheRefillCount : Int = 2,
               dataCacheWritebackCount : Int = 2,
-              prioWidth : Int = 0,
+              prioWidth : Int = 3,
               simulation : Boolean = GenerationFlags.simulation,
               sideChannels : Boolean = false,
               dispatchSlots : Int = 32,
