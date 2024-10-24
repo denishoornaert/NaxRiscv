@@ -106,7 +106,7 @@ class NaxSoc(c : NaxSocConfig, downPendingMax : Int = 4, probeCount : Int = 1) e
       cache.parameter.cacheWays = l2Ways
       cache.parameter.cacheBytes = l2Bytes
       cache.up << memFilter.down
-      cache.up.setUpConnection(a = StreamPipe.FULL, c = StreamPipe.FULL, d = StreamPipe.FULL)
+      cache.up.setUpConnection(a = StreamPipe.NONE, c = StreamPipe.FULL, d = StreamPipe.FULL)
       cache.down.setDownConnection(d = StreamPipe.S2M)
       cache.down.forceDataWidth(mainDataWidth)
       nonCoherent = cache.down

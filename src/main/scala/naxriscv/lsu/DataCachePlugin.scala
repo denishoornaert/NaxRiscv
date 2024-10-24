@@ -160,7 +160,7 @@ class DataCachePlugin(var memDataWidth : Int,
     )
 
     val csr = getService[CsrService]
-    val busPrio = Reg(UInt(prioWidth bits)) init(0) // init(UInt(prioWidth bits).setAll())
+    val busPrio = Reg(UInt(prioWidth bits)) init(UInt(prioWidth bits).setAll())
     csr.readWrite(busPrio, 0xBC0)
     cache.io.busPrio := busPrio
 

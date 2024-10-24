@@ -148,7 +148,7 @@ object NaxGen extends App{
       p :+ new CsrTracer
     }
     println()
-    new NaxSoc(socConfig).setDefinitionName(netlistName)
+    new NaxSoc(socConfig, downPendingMax, probeCount).setDefinitionName(netlistName)
   }
 }
 
